@@ -1,5 +1,9 @@
 //! Shared media primitives for Vidrane, independent of platform and UI.
 
+pub mod playlists;
+pub mod providers;
+pub mod transfers;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum MediaKind {
