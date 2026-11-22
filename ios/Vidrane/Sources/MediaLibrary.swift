@@ -92,7 +92,7 @@ final class MediaLibrary: ObservableObject {
         guard fm.fileExists(atPath: destination.path) else { return destination }
         let original = (name as NSString).deletingPathExtension
         let suffix = (name as NSString).pathExtension
-        let newName = original + "-" + UUID().uuidString.prefix(8) + (suffix.isEmpty ? "" : "." + suffix)
+        let newName = original + "-" + String(UUID().uuidString.prefix(8)) + (suffix.isEmpty ? "" : "." + suffix)
         destination = mediaDirectory.appendingPathComponent(newName)
         return destination
     }

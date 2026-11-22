@@ -36,7 +36,8 @@ struct NetworkView: View {
             }
 
             Section("Сетевые подключения — в разработке") {
-                ForEach(futureProtocols, id: \.0) { title, detail in
+                ForEach(futureProtocols.indices, id: \.self) { index in
+                    let (title, detail) = futureProtocols[index]
                     HStack {
                         Image(systemName: "server.rack")
                             .foregroundStyle(.secondary)

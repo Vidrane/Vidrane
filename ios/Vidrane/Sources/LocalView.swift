@@ -42,12 +42,16 @@ struct LocalView: View {
                     }
                     .contextMenu {
                         if file.kind.playable {
-                            Button("Добавить в плейлист", systemImage: "text.badge.plus") {
+                            Button {
                                 playlistTarget = file
+                            } label: {
+                                Label("Добавить в плейлист", systemImage: "text.badge.plus")
                             }
                         }
-                        Button("Удалить", systemImage: "trash", role: .destructive) {
+                        Button(role: .destructive) {
                             library.delete(file)
+                        } label: {
+                            Label("Удалить", systemImage: "trash")
                         }
                     }
                 }

@@ -68,8 +68,10 @@ struct PlaylistDetailView: View {
                         Label(file.name, systemImage: file.kind.symbol)
                     }
                     .contextMenu {
-                        Button("Убрать из плейлиста", systemImage: "minus.circle", role: .destructive) {
+                        Button(role: .destructive) {
                             library.remove(file, from: playlistID)
+                        } label: {
+                            Label("Убрать из плейлиста", systemImage: "minus.circle")
                         }
                     }
                 }
