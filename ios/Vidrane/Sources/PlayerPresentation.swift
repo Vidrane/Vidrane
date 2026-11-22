@@ -4,8 +4,8 @@ import AVKit
 /// Selects the controls shown around the same native AVFoundation decoder.
 /// A different playback UI does not unlock new codecs or Apple entitlements.
 enum PlayerPresentation: String, CaseIterable, Identifiable {
-    case apple
     case vidrane
+    case apple
 
     var id: String { rawValue }
 

@@ -4,14 +4,14 @@ struct SettingsView: View {
     @AppStorage("showExtensions") private var showExtensions = true
     @AppStorage("keepScreenOn") private var keepScreenOn = true
     @AppStorage("playbackRate") private var playbackRate = 1.0
-    @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.apple.rawValue
+    @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
 
     private var signingProfile: String {
         (Bundle.main.object(forInfoDictionaryKey: "VidraneSigningProfile") as? String) ?? "Unknown"
     }
 
     private var selection: PlayerPresentation {
-        PlayerPresentation(rawValue: playerPresentation) ?? .apple
+        PlayerPresentation(rawValue: playerPresentation) ?? .vidrane
     }
 
     var body: some View {
@@ -42,7 +42,7 @@ struct SettingsView: View {
             } header: {
                 Text("Воспроизведение")
             } footer: {
-                Text("Apple Player включён по умолчанию. Режим можно сменить во время просмотра через меню «Плеер». Оба интерфейса используют AVFoundation: переключение не меняет набор поддерживаемых кодеков. Системный PiP доступен в режиме Apple, если его поддерживает устройство.")
+                Text("По умолчанию используется Vidrane Player. Здесь можно выбрать Apple Player для следующих воспроизведений. Переключение через меню «Плеер» во время просмотра действует только для текущего сеанса. Оба интерфейса используют AVFoundation, а системный PiP доступен в режиме Apple на совместимых устройствах.")
             }
 
             Section {

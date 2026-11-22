@@ -18,3 +18,5 @@ Future development (not currently supported):
 - FFmpeg/libmpv backend, advanced audio/video/subtitle handling
 - Gesture mappings, resume downloads, complete background transfers
 - Android, Windows, Linux and macOS UI
+
+Playback controls: Vidrane custom player is the default on fresh installs. Apple AVPlayerViewController is an optional interface. Settings chooses the default for future playback; the in-player switch is session-only. Both share one AVPlayer and AVFoundation codec support. Old explicitly saved Apple preferences are preserved.

@@ -48,3 +48,7 @@ VidranePersonal and VidraneDeveloper contain the same features; they differ only
 ## License
 
 MIT. Independent source code; no proprietary nPlayer assets or code are included.
+
+## iOS player interface
+
+Vidrane's custom interface is the default for fresh installations. In Settings → Playback, users can select Apple's system video player as the default for future files; changing the interface from the playback screen affects only that viewing session. Both modes currently use the same AVFoundation engine, and system Picture-in-Picture is provided by the Apple control mode on supported devices.

@@ -6,14 +6,14 @@ struct PlaybackView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("keepScreenOn") private var keepScreenOn = true
     @AppStorage("playbackRate") private var playbackRate = 1.0
-    @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.apple.rawValue
+    @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
 
     let request: PlaybackRequest
 
     // The same AVPlayer instance is retained when the interface changes,
     // preserving the stream, timestamp and current play/pause state.
     @State private var player = AVPlayer()
-    @State private var selectedPresentation: PlayerPresentation = .apple
+    @State private var selectedPresentation: PlayerPresentation = .vidrane
     @State private var elapsed = 0.0
     @State private var duration = 0.0
     @State private var scrubbing = false
@@ -55,8 +55,8 @@ struct PlaybackView: View {
             Menu {
                 ForEach(PlayerPresentation.allCases) { option in
                     Button {
+                        // Session-only switch; default is changed in Settings.
                         selectedPresentation = option
-                        playerPresentation = option.rawValue
                         showingControls = true
                     } label: {
                         if selectedPresentation == option {
@@ -183,7 +183,7 @@ struct PlaybackView: View {
     }
 
     private func start() {
-        selectedPresentation = PlayerPresentation(rawValue: playerPresentation) ?? .apple
+        selectedPresentation = PlayerPresentation(rawValue: playerPresentation) ?? .vidrane
         player.replaceCurrentItem(with: AVPlayerItem(url: request.url))
         player.play()
         if playbackRate != 1 { player.rate = Float(playbackRate) }
