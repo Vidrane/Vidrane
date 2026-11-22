@@ -26,6 +26,8 @@ enum VidraneMediaKind: Int {
 struct LocalMedia: Identifiable, Hashable {
     let url: URL
     let kind: VidraneMediaKind
+    let bytes: Int64
+    let modified: Date?
 
     var id: String { url.lastPathComponent }
     var name: String { url.lastPathComponent }
@@ -80,7 +82,15 @@ final class MediaLibrary: ObservableObject {
         do {
             let urls = try fm.contentsOfDirectory(at: mediaDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
             files = urls.filter { !$0.hasDirectoryPath }
-                .map { LocalMedia(url: $0, kind: VidraneMediaKind(filename: $0.lastPathComponent)) }
+                .map { url -> LocalMedia in
+                    let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                    return LocalMedia(
+                        url: url,
+                        kind: VidraneMediaKind(filename: url.lastPathComponent),
+                        bytes: Int64(values?.fileSize ?? 0),
+                        modified: values?.contentModificationDate
+                    )
+                }
                 .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         } catch {
             errorMessage = "Не удалось прочитать папку: \(error.localizedDescription)"
@@ -119,6 +129,36 @@ final class MediaLibrary: ObservableObject {
             refreshFiles()
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Renames a file without changing its directory and keeps playlist IDs in sync.
+    func rename(_ file: LocalMedia, to enteredName: String) {
+        let name = enteredName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != "..",
+              !name.hasPrefix("."), !name.contains("/"), !name.contains("\\") else {
+            errorMessage = "Недопустимое имя файла."
+            return
+        }
+        guard file.url.deletingLastPathComponent().standardizedFileURL == mediaDirectory.standardizedFileURL else {
+            errorMessage = "Переименование доступно только для локальных файлов."
+            return
+        }
+        guard name != file.name else { return }
+        let destination = mediaDirectory.appendingPathComponent(name)
+        guard !fm.fileExists(atPath: destination.path) else {
+            errorMessage = "Файл с таким именем уже существует."
+            return
+        }
+        do {
+            try fm.moveItem(at: file.url, to: destination)
+            for index in playlists.indices {
+                playlists[index].files = playlists[index].files.map { $0 == file.id ? name : $0 }
+            }
+            savePlaylists()
+            refreshFiles()
+        } catch {
+            errorMessage = "Переименование не удалось: \(error.localizedDescription)"
         }
     }
 
