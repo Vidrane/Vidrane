@@ -13,7 +13,9 @@ pub extern "C" fn vidrane_media_kind(filename: *const c_char) -> u32 {
 }
 
 #[no_mangle]
-pub extern "C" fn vidrane_api_version() -> u32 { 1 }
+pub extern "C" fn vidrane_api_version() -> u32 {
+    1
+}
 
 #[cfg(test)]
 mod tests {
