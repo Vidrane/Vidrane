@@ -1,0 +1,70 @@
+name: Vidrane
+options:
+  bundleIdPrefix: org.vidrane
+  deploymentTarget:
+    iOS: "16.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+targetTemplates:
+  App:
+    type: application
+    platform: iOS
+    productName: Vidrane
+    sources:
+      - path: Sources
+    settings:
+      base:
+        PRODUCT_NAME: Vidrane
+        PRODUCT_BUNDLE_IDENTIFIER: org.vidrane.player
+        INFOPLIST_FILE: Sources/Info.plist
+        SWIFT_OBJC_BRIDGING_HEADER: "$(SRCROOT)/Sources/VidraneBridge.h"
+        VIDRANE_RUST_TARGET: aarch64-apple-ios-sim
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/../../target/$(VIDRANE_RUST_TARGET)/release"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "-lvidrane_ffi"
+    preBuildScripts:
+      - name: Build Rust static library
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cd "$SRCROOT/../.."
+          cargo build --release -p vidrane-ffi --target "$VIDRANE_RUST_TARGET"
+targets:
+  VidranePersonal:
+    templates: [App]
+    settings:
+      base:
+        VIDRANE_SIGNING_PROFILE: personal
+        CODE_SIGN_ENTITLEMENTS: Config/Personal.entitlements
+  VidraneDeveloper:
+    templates: [App]
+    settings:
+      base:
+        VIDRANE_SIGNING_PROFILE: developer
+        CODE_SIGN_ENTITLEMENTS: Config/Developer.entitlements
+schemes:
+  VidranePersonal:
+    build:
+      targets:
+        VidranePersonal: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+  VidraneDeveloper:
+    build:
+      targets:
+        VidraneDeveloper: all
+    run:
+      config: Debug
+    archive:
+      config: Release

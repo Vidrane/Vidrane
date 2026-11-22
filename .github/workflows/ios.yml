@@ -1,0 +1,38 @@
+name: iOS unsigned builds
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  ios:
+    name: ${{ matrix.profile }} device
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [Personal, Developer]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios/Vidrane
+        run: xcodegen generate
+      - name: Build iPhone application (unsigned)
+        run: |
+          xcodebuild -project ios/Vidrane/Vidrane.xcodeproj \
+            -scheme Vidrane${{ matrix.profile }} -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/build" VIDRANE_RUST_TARGET=aarch64-apple-ios \
+            CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          mkdir -p stage/Payload
+          cp -R build/Build/Products/Release-iphoneos/Vidrane.app stage/Payload/
+          (cd stage && zip -qr "../Vidrane-${{ matrix.profile }}-unsigned.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Vidrane-${{ matrix.profile }}-unsigned
+          path: Vidrane-${{ matrix.profile }}-unsigned.ipa
+          if-no-files-found: error
