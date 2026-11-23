@@ -27,8 +27,10 @@
 
 - The player still depends on AVFoundation for decoding in both UI modes.
   A filename being recognized does not prove it is playable by Apple's codecs.
-- The custom presentation does not yet have its own Picture-in-Picture button;
-  the system presentation supports it on compatible devices.
+- Both Vidrane's custom presentation and Apple's system presentation expose
+  native Picture-in-Picture on compatible devices. The Vidrane mode uses
+  AVPictureInPictureController with its AVPlayerLayer; actual PiP transitions
+  need physical-device validation.
 - Embedded media selection depends on the asset. External ASS/SRT subtitles,
   font rendering, codec fallback and audio DSP are not yet implemented.
 - Resume history is currently keyed to unique *imported local filenames*.

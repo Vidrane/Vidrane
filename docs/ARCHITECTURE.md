@@ -16,8 +16,9 @@ custom AVPlayerLayer presentation.
   user's chosen default. An in-player override remains session-local.
 - AVKit controls use AVPlayerViewController and system PiP if the device and
   current playback session support it.
-- Vidrane controls use AVPlayerLayer, custom seeking, scale and track menus.
-  Both modes use the same Apple decoding backend until Rust engine work lands.
+- Vidrane controls use AVPlayerLayer, custom seeking, scale and track menus,
+  and AVPictureInPictureController for native PiP when available. Both
+  modes use the same Apple decoding backend until Rust engine work lands.
 - Rust functions decide whether a saved position is resumable or completed.
   Swift's WatchHistory owns the local JSON file, and MediaLibrary updates
   checkpoint keys on rename/deletion.
