@@ -7,6 +7,9 @@ struct PlaybackView: View {
     @AppStorage("keepScreenOn") private var keepScreenOn = true
     @AppStorage("playbackRate") private var playbackRate = 1.0
     @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
+    @AppStorage("resumePlayback") private var resumePlayback = true
+    @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
+    @ObservedObject private var watchHistory = WatchHistory.shared
 
     let request: PlaybackRequest
 
@@ -20,6 +23,11 @@ struct PlaybackView: View {
     @State private var previewTime = 0.0
     @State private var playing = false
     @State private var showingControls = true
+    @State private var pendingResume = 0.0
+    @State private var pendingDuration = 0.0
+    @State private var waitingToResume = false
+    @State private var seekingToResume = false
+    @State private var lastCheckpointAt: Date = .distantPast
 
     private let progressTicker = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
@@ -41,6 +49,11 @@ struct PlaybackView: View {
         .onAppear(perform: start)
         .onReceive(progressTicker) { _ in
             updateProgress()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .AVPlayerItemDidPlayToEndTime)) { message in
+            guard let ended = message.object as? AVPlayerItem,
+                  ended === player.currentItem else { return }
+            watchHistory.remove(url: request.url)
         }
         .onDisappear(perform: stop)
     }
@@ -72,6 +85,14 @@ struct PlaybackView: View {
             }
             .accessibilityLabel("Выбрать интерфейс плеера")
 
+            Button {
+                watchHistory.remove(url: request.url)
+                seek(to: 0)
+            } label: {
+                Image(systemName: "arrow.counterclockwise")
+            }
+            .accessibilityLabel("Начать сначала")
+
             Button("Готово") { dismiss() }
                 .foregroundStyle(VidraneStyle.accent)
         }
@@ -82,13 +103,28 @@ struct PlaybackView: View {
 
     private var customPlayer: some View {
         ZStack {
-            VidraneVideoSurface(player: player)
+            GeometryReader { dimensions in
+                VidraneVideoSurface(
+                    player: player,
+                    gravity: (VideoScaling(rawValue: videoScaling) ?? .fit).gravity
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        showingControls.toggle()
-                    }
-                }
+                .gesture(
+                    SpatialTapGesture(count: 2)
+                        .exclusively(before: TapGesture())
+                        .onEnded { gesture in
+                            switch gesture {
+                            case .first(let tap):
+                                skip(seconds: tap.location.x < dimensions.size.width / 2 ? -10 : 10)
+                            case .second:
+                                withAnimation(.easeInOut(duration: 0.18)) {
+                                    showingControls.toggle()
+                                }
+                            }
+                        }
+                )
+            }
 
             if showingControls {
                 VStack {
@@ -166,6 +202,23 @@ struct PlaybackView: View {
                         .font(.footnote.monospacedDigit())
                 }
                 .accessibilityLabel("Скорость воспроизведения")
+
+                Menu {
+                    ForEach(VideoScaling.allCases) { scaling in
+                        Button {
+                            videoScaling = scaling.rawValue
+                        } label: {
+                            if videoScaling == scaling.rawValue {
+                                Label(scaling.title, systemImage: "checkmark")
+                            } else {
+                                Text(scaling.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "aspectratio")
+                }
+                .accessibilityLabel("Масштаб видео")
             }
             .font(.title2)
             .buttonStyle(.plain)
@@ -184,6 +237,12 @@ struct PlaybackView: View {
 
     private func start() {
         selectedPresentation = PlayerPresentation(rawValue: playerPresentation) ?? .vidrane
+        let saved = resumePlayback ? watchHistory.checkpoint(for: request.url) : nil
+        pendingResume = saved?.seconds ?? 0
+        pendingDuration = saved?.duration ?? 0
+        waitingToResume = pendingResume > 0
+        seekingToResume = false
+        lastCheckpointAt = Date()
         player.replaceCurrentItem(with: AVPlayerItem(url: request.url))
         player.play()
         if playbackRate != 1 { player.rate = Float(playbackRate) }
@@ -192,19 +251,61 @@ struct PlaybackView: View {
     }
 
     private func stop() {
+        saveCheckpoint()
         player.pause()
         player.replaceCurrentItem(with: nil)
         UIApplication.shared.isIdleTimerDisabled = false
     }
 
+    private func saveCheckpoint() {
+        guard !waitingToResume, !seekingToResume,
+              let item = player.currentItem, item.status == .readyToPlay else { return }
+        watchHistory.record(
+            url: request.url,
+            seconds: player.currentTime().seconds,
+            duration: item.duration.seconds
+        )
+        lastCheckpointAt = Date()
+    }
+
     private func updateProgress() {
+        guard let item = player.currentItem else { return }
+
+        // Wait until the AVPlayerItem is ready before seeking. Never let the
+        // initial 0:00 playback overwrite the previous saved checkpoint.
+        if waitingToResume && !seekingToResume && item.status == .readyToPlay {
+            let mediaDuration = item.duration.seconds
+            let actualDuration = mediaDuration.isFinite ? mediaDuration : pendingDuration
+            let target = vidrane_resume_position(pendingResume, actualDuration)
+            waitingToResume = false
+            if target > 0 {
+                seekingToResume = true
+                player.seek(
+                    to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                ) { completed in
+                    Task { @MainActor in
+                        if completed { elapsed = target }
+                        seekingToResume = false
+                        lastCheckpointAt = Date()
+                    }
+                }
+            }
+        }
+
         let current = player.currentTime().seconds
-        if current.isFinite && current >= 0 && !scrubbing {
+        if current.isFinite && current >= 0 && !scrubbing && !seekingToResume {
             elapsed = current
         }
-        let length = player.currentItem?.duration.seconds ?? .nan
+        let length = item.duration.seconds
         duration = length.isFinite && length > 0 ? length : 0
         playing = player.timeControlStatus == .playing
+
+        if !waitingToResume && !seekingToResume &&
+            Date().timeIntervalSince(lastCheckpointAt) >= 5 {
+            saveCheckpoint()
+        }
     }
 
     private func togglePlaying() {
@@ -225,6 +326,9 @@ struct PlaybackView: View {
         let bounded = max(0, duration > 0 ? min(duration, seconds) : seconds)
         player.seek(to: CMTime(seconds: bounded, preferredTimescale: 600))
         elapsed = bounded
+        if bounded < 5 {
+            watchHistory.remove(url: request.url)
+        }
     }
 
     private func formattedTime(_ seconds: Double) -> String {

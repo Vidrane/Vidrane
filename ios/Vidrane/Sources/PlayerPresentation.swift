@@ -31,15 +31,37 @@ enum PlayerPresentation: String, CaseIterable, Identifiable {
     }
 }
 
+enum VideoScaling: String, CaseIterable, Identifiable {
+    case fit
+    case fill
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .fit: return "Вместить"
+        case .fill: return "Заполнить"
+        }
+    }
+
+    var gravity: AVLayerVideoGravity {
+        switch self {
+        case .fit: return .resizeAspect
+        case .fill: return .resizeAspectFill
+        }
+    }
+}
+
 /// Used only for Vidrane presentation; AVPlayer remains the single playback
 /// session when switching between Apple and custom controls.
 struct VidraneVideoSurface: UIViewRepresentable {
     let player: AVPlayer
+    let gravity: AVLayerVideoGravity
 
     func makeUIView(context: Context) -> VidraneVideoLayerView {
         let view = VidraneVideoLayerView()
         view.backgroundColor = .black
-        view.videoLayer.videoGravity = .resizeAspect
+        view.videoLayer.videoGravity = gravity
         view.videoLayer.player = player
         return view
     }
@@ -47,6 +69,9 @@ struct VidraneVideoSurface: UIViewRepresentable {
     func updateUIView(_ view: VidraneVideoLayerView, context: Context) {
         if view.videoLayer.player !== player {
             view.videoLayer.player = player
+        }
+        if view.videoLayer.videoGravity != gravity {
+            view.videoLayer.videoGravity = gravity
         }
     }
 }

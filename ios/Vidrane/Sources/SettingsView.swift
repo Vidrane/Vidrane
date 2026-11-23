@@ -5,6 +5,9 @@ struct SettingsView: View {
     @AppStorage("keepScreenOn") private var keepScreenOn = true
     @AppStorage("playbackRate") private var playbackRate = 1.0
     @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
+    @AppStorage("resumePlayback") private var resumePlayback = true
+    @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
+    @State private var confirmingClearHistory = false
 
     private var signingProfile: String {
         (Bundle.main.object(forInfoDictionaryKey: "VidraneSigningProfile") as? String) ?? "Unknown"
@@ -31,6 +34,17 @@ struct SettingsView: View {
                 Text(selection.detail)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                Toggle("Продолжать просмотр с места остановки", isOn: $resumePlayback)
+                Picker("Размер видео в Vidrane", selection: $videoScaling) {
+                    ForEach(VideoScaling.allCases) { scaling in
+                        Text(scaling.title).tag(scaling.rawValue)
+                    }
+                }
+                Button(role: .destructive) {
+                    confirmingClearHistory = true
+                } label: {
+                    Label("Очистить историю просмотра", systemImage: "trash")
+                }
                 Toggle("Не выключать экран во время просмотра", isOn: $keepScreenOn)
                 Picker("Начальная скорость", selection: $playbackRate) {
                     Text("0,5×").tag(0.5)
@@ -65,5 +79,13 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Настройки")
+        .confirmationDialog(
+            "Удалить все сохранённые позиции воспроизведения?",
+            isPresented: $confirmingClearHistory
+        ) {
+            Button("Удалить историю", role: .destructive) {
+                WatchHistory.shared.clearAll()
+            }
+        }
     }
 }
