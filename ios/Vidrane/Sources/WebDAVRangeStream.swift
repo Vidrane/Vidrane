@@ -40,29 +40,27 @@ private final class StreamRedirectBlocker: NSObject, URLSessionTaskDelegate {
 /// Validates the *entire* Content-Range, not only "Accept-Ranges".
 /// A valid response is exactly: bytes START-END/TOTAL.
 private enum RangeResponse {
-    static func parse(_ header: String) -> (start: Int64, end: Int64, total: Int64)? {
-        let parts = header.split(separator: " ", omittingEmptySubsequences: true)
-        guard parts.count == 2, parts[0].lowercased() == "bytes",
-              let pair = parts[1].split(separator: "/", omittingEmptySubsequences: false)
-                .first.map(String.init),
-              let totalText = parts[1].split(separator: "/", omittingEmptySubsequences: false)
-                .last.map(String.init),
-              let total = Int64(totalText), total > 0 else { return nil }
-        let offsets = pair.split(separator: "-", omittingEmptySubsequences: false)
-        guard offsets.count == 2,
-              let start = Int64(offsets[0]), let end = Int64(offsets[1]),
-              start >= 0, end >= start, end < total else { return nil }
-        return (start, end, total)
-    }
-
-    static func matches(_ response: URLResponse, start: Int64,
-                        end: Int64, total: Int64?) -> Bool {
+    static func total(
+        _ response: URLResponse,
+        start: Int64,
+        end: Int64,
+        expectedTotal: Int64? = nil
+    ) -> Int64? {
         guard let http = response as? HTTPURLResponse,
               http.statusCode == 206,
-              let header = http.value(forHTTPHeaderField: "Content-Range"),
-              let range = parse(header),
-              range.start == start, range.end == end else { return false }
-        return total == nil || range.total == total
+              start >= 0, end >= start,
+              let header = http.value(forHTTPHeaderField: "Content-Range") else {
+            return nil
+        }
+        let total = header.withCString {
+            vidrane_content_range_total(
+                $0,
+                UInt64(start),
+                UInt64(end),
+                UInt64(expectedTotal ?? 0)
+            )
+        }
+        return total > 0 && total <= UInt64(Int64.max) ? Int64(total) : nil
     }
 }
 
@@ -136,10 +134,9 @@ final class WebDAVRangeStream: NSObject, AVAssetResourceLoaderDelegate {
                 (response as? HTTPURLResponse)?.statusCode == 403 {
                 throw WebDAVError.authenticationRequired
             }
-            guard RangeResponse.matches(response, start: 0, end: 0, total: nil),
-                  let http = response as? HTTPURLResponse,
-                  let value = http.value(forHTTPHeaderField: "Content-Range"),
-                  let range = RangeResponse.parse(value) else {
+            guard let totalLength = RangeResponse.total(
+                response, start: 0, end: 0
+            ) else {
                 throw WebDAVStreamError.unsupportedRange
             }
             var iterator = bytes.makeAsyncIterator()
@@ -151,7 +148,7 @@ final class WebDAVRangeStream: NSObject, AVAssetResourceLoaderDelegate {
             return WebDAVRangeStream(
                 origin: file.url,
                 authorization: access.authorizationHeader,
-                length: range.total,
+                length: totalLength,
                 contentType: type.identifier,
                 transport: transport,
                 filename: file.name
@@ -241,7 +238,9 @@ final class WebDAVRangeStream: NSObject, AVAssetResourceLoaderDelegate {
         if let authorization { req.setValue(authorization, forHTTPHeaderField: "Authorization") }
         let (bytes, response) = try await transport.bytes(for: req)
         defer { bytes.task.cancel() }
-        guard RangeResponse.matches(response, start: start, end: end, total: length) else {
+        guard RangeResponse.total(
+            response, start: start, end: end, expectedTotal: length
+        ) != nil else {
             throw WebDAVStreamError.invalidResponse
         }
         var data = Data()

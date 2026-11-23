@@ -121,6 +121,34 @@ pub unsafe extern "C" fn vidrane_webdav_free_json(ptr: *mut c_char) {
     }
 }
 
+/// Validate an untrusted HTTP Content-Range header for an inclusive range.
+/// Returns positive total length, or 0 if the range is invalid.
+/// expected_total = 0 discovers total size in a one-byte probe.
+///
+/// # Safety
+/// header points to a NUL-terminated C string, or is null.
+#[no_mangle]
+pub unsafe extern "C" fn vidrane_content_range_total(
+    header: *const c_char,
+    start: u64,
+    end: u64,
+    expected_total: u64,
+) -> u64 {
+    if header.is_null() {
+        return 0;
+    }
+    let Ok(value) = CStr::from_ptr(header).to_str() else {
+        return 0;
+    };
+    vidrane_core::http_range::verify_content_range(
+        value,
+        start,
+        end,
+        (expected_total != 0).then_some(expected_total),
+    )
+    .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

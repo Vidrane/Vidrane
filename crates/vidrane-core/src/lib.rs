@@ -1,5 +1,6 @@
 //! Shared media primitives for Vidrane, independent of platform and UI.
 
+pub mod http_range;
 pub mod media_engine;
 pub mod playlists;
 pub mod providers;
