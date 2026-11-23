@@ -65,7 +65,7 @@ struct PlaylistDetailView: View {
                     Button {
                         library.play(file)
                     } label: {
-                        Label(file.name, systemImage: file.kind.symbol)
+                        Label(file.relativePath, systemImage: file.symbol)
                     }
                     .contextMenu {
                         Button(role: .destructive) {
@@ -90,12 +90,12 @@ struct PlaylistDetailView: View {
         .sheet(isPresented: $addingFiles) {
             NavigationStack {
                 List {
-                    ForEach(library.files.filter { $0.kind.playable }) { file in
+                    ForEach(library.files.filter { !$0.isDirectory && $0.kind.playable }) { file in
                         Button {
                             library.add(file, to: playlistID)
                         } label: {
                             HStack {
-                                Text(file.name).lineLimit(1)
+                                Text(file.relativePath).lineLimit(2)
                                 Spacer()
                                 if playlist?.files.contains(file.id) == true {
                                     Image(systemName: "checkmark")
