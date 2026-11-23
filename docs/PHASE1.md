@@ -1,44 +1,37 @@
-# Vidrane — development status
+# Vidrane: development status
 
-Implemented:
-- Rust core for format classification, playlists, downloads state policy,
-  playback resume, provider registry, backend selection policy and UTF-8
-  SRT/WebVTT subtitle parsing with unit tests.
-- C ABI to native frontends, including subtitle JSON allocation/free.
-- Six-tab iOS interface, local file import, search, sorting, rename, share,
-  delete and media information.
-- Vidrane player controls by default; optional Apple controls using the
-  same AVPlayer. Session-only player UI switching.
-- Speed, seek gestures, scale, native PiP on supported devices, saved
-  watch position and Continue Watching.
-- Embedded AVFoundation audio and subtitle track selection where available.
-- External SRT/VTT subtitles via sidecar discovery or Files picker.
-  Synchronised text overlay and user-configurable subtitle typography.
-- AVFoundation playback failure reporting; simple HTTPS playback/downloads;
-  Playlists, WebKit browser and user settings.
-- Personal and Developer iOS unsigned IPA targets using the same source.
+One open-source free application, with no paid feature tiers. Personal and
+Developer are Apple signing profiles, not app editions.
 
-Not implemented:
-- Actual libmpv/FFmpeg codec backend, Dolby/DTS/HDR features beyond what
-  AVFoundation provides, or automatic codec failover. See ENGINE.md.
-- Advanced styled/bitmap subtitles, system PiP external captions. See
-  SUBTITLES.md.
-- SMB/SFTP/FTP/NFS/DLNA network browsing. An iOS HTTPS WebDAV client now supports
-  folder navigation and authenticated downloads; real-server validation is pending.
-- Persistent background transfers and resumable offsets across restarts.
-  Foreground downloads now support progress, cancellation and retry.
-- Full nPlayer Plus parity; Android and desktop frontends.
+## Implemented in source
 
-Validation:
-- Rust CI checks formatting, unit tests and release build.
-- macOS GitHub Actions builds two unsigned iOS app variants.
-- Neither unsigned IPA can be installed without suitable code signing.
-- Physical-device testing of decoder, PiP and subtitle behavior is pending.
+- Rust media classification, subtitle and WebDAV parsers, playlist,
+  transfer-state, resume and decoder-selection policies.
+- Six SwiftUI tabs, settings and WebKit browser.
+- Vidrane custom controls by default; optional Apple system interface.
+- AVFoundation playback, PiP, playback controls, track selection and resume.
+- Experimental independently linked libmpv/FFmpeg iOS variant with actual
+  decoder context and OpenGL ES video rendering; builds in GitHub Actions.
+- SRT/WebVTT sidecar and user-selected subtitle overlay with delay and style.
+- Folder-aware local media manager: nested import, browse, copy, move,
+  rename, delete, share, search, filter and sort.
+- Relative-path playlist/history IDs updated after rename or move.
+- WebDAV: HTTPS Basic/Keychain, PROPFIND browsing, downloads, MKCOL, MOVE,
+  COPY, DELETE and PUT uploads.
+- Unified foreground HTTPS/WebDAV download queue with progress, cancel and
+  retry. Personal/Developer unsigned IPAs build from the same code.
 
-Current network work: iOS WebDAV browsing, Keychain credentials, shared Rust DAV XML parsing, foreground transfer queue; see NETWORK.md. Testing on a physical device is intentionally deferred until broader basic feature coverage.
+## Still planned or unverified
 
-Current milestone: an independently built experimental MPVKit integration
-with pinned source and libmpv/FFmpeg XCFramework is being validated in CI.
-The standard Personal/Developer IPA variants continue using AVFoundation.
-Actual libmpv performance, codecs and iOS hardware behavior remain untested.
-See MPV_IOS.md for reproduction steps and licensing concerns.
+- Physical-device verification of playback, codec support, PiP and battery.
+- Real-server interoperability tests for WebDAV mutations and transfers.
+- SMB/CIFS, SFTP/FTP, NFS and DLNA/UPnP providers.
+- libmpv PiP and full HDR/Dolby Vision/Atmos/DTS behavior and license audit.
+- Authenticated range streaming without downloading the entire file.
+- Durable background downloads, resumable transfers and upload progress.
+- Local trash/undo, batch actions, archive extraction and external bookmarks.
+- Android/desktop frontends and broader nPlayer Plus feature parity.
+
+GitHub Actions currently validates Rust and standard iOS unsigned builds.
+The experimental libmpv workflow validates the dependency-based iOS variant.
+A passing CI build does NOT mean hardware testing has been completed.

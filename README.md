@@ -51,11 +51,11 @@ MIT. Independent source code; no proprietary nPlayer assets or code are included
 
 ## iOS player interface
 
-Vidrane's custom interface is the default for fresh installations. In Settings → Playback, users can select Apple's system video player as the default for future files; changing the interface from the playback screen affects only that viewing session. Both modes currently use the same AVFoundation engine, and system Picture-in-Picture is provided by the Apple control mode on supported devices.
+Vidrane's custom interface is the default. Apple system controls are optional; both native presentations use AVFoundation and offer PiP when supported. The separate experimental libmpv build provides an additional decoder.
 
 ## Subtitle and decoder roadmap
 
-Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen captions on iOS. Playback still uses AVFoundation in both player interfaces; a Rust decoder routing policy is present, but libmpv/FFmpeg decoding is not integrated yet. See [subtitle support](docs/SUBTITLES.md) and [engine architecture](docs/ENGINE.md).
+Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen captions on iOS. The native interfaces use AVFoundation; the separately built optional MPVKit variant also includes a working libmpv/FFmpeg integration at the code/CI level, pending physical-device verification. See [subtitle support](docs/SUBTITLES.md) and [engine architecture](docs/ENGINE.md).
 
 ## Network and transfers
 
@@ -71,3 +71,7 @@ With libmpv linked, the decoder can be selected in Settings, and
 unsupported native formats can be retried with the alternative backend.
 The experiments are not yet tested on a physical iPhone.
 See [MPV iOS build guide](docs/MPV_IOS.md).
+
+## Local and WebDAV file management
+
+Vidrane now supports nested local folders, copy/move/rename/delete and path-stable playlists/history. The WebDAV client also includes remote create/rename/copy/delete and uploads through HTTPS. Both are compiled by CI but still need real device/server tests. See [local files](docs/LOCAL_FILES.md) and [WebDAV operations](docs/NETWORK.md).

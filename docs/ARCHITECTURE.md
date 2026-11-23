@@ -1,47 +1,32 @@
 # Vidrane architecture
 
-Vidrane is one free open-source media player, with **no subscription or feature
-tiers**. Personal and Developer are iOS signing configurations only; no Apple
-Developer membership is required to access basic Vidrane features.
+Vidrane is a free, open-source player with no subscriptions, paid tiers or
+deliberately restricted features. Apple Personal and Developer are
+provisioning profiles, not product versions.
 
-## Current vertical slice
+## Core and platform integration
 
-iOS SwiftUI -> MediaLibrary / WatchHistory -> Rust C ABI (classification and
-resume policy) -> AVFoundation (playback, audio/subtitle groups) -> AVKit or
-custom AVPlayerLayer presentation.
+Rust provides format categories, resume policies, subtitles, DAV XML,
+playback-engine selection, playlist and transfer-state rules through a C ABI.
+SwiftUI implements iOS navigation and platform services: AVFoundation,
+AVKit, Keychain, URLSession, WebKit and managed files.
 
-- The **same AVPlayer** survives switching presentation to avoid restarting
-  the track or losing the playback position.
-- Vidrane presentation is the new-install default; Settings persists the
-  user's chosen default. An in-player override remains session-local.
-- AVKit controls use AVPlayerViewController and system PiP if the device and
-  current playback session support it.
-- Vidrane controls use AVPlayerLayer, custom seeking, scale and track menus,
-  and AVPictureInPictureController for native PiP when available. Both
-  modes use the same Apple decoding backend until Rust engine work lands.
-- Rust functions decide whether a saved position is resumable or completed.
-  Swift's WatchHistory owns the local JSON file, and MediaLibrary updates
-  checkpoint keys on rename/deletion.
-- SwiftUI code is a platform integration layer. Core provider abstractions,
-  media metadata/queue policy and engine negotiation will move into Rust
-  with future cross-platform frontends.
-- Local storage is app-sandboxed; direct remote URLs require HTTPS; never
-  bundle third-party signing credentials in the repository.
+- Local files live in a nested Documents/Media directory tree. Identifiers
+  are relative paths; directory mutations update playlists/watch history.
+- The native Vidrane and Apple presentations share an AVPlayer instance.
+  Vidrane controls are the default; Apple is an optional UI mode.
+- The optional MPVKit backend uses libmpv and FFmpeg, separate rendering
+  and a separate decoder lifecycle. Switching engines recreates playback.
+- WebDAV uses Rust parsing and Swift HTTPS transport for PROPFIND, file
+  transfers and mutating operations, all scoped to one configured root.
+- Personal and Developer build targets contain the same functionality;
+  optional iOS entitlements require legitimate provisioning.
 
-## System capabilities
+## Boundaries
 
-The iOS application requests no speculative optional entitlements. Native
-PiP and audio background modes are independent of the signer's membership.
-CloudKit, APNs, and App Groups must be enabled only with suitable provisioning
-and confirmed platform support. No iOS entitlement is bypassed.
+SMB/SFTP, robust background transfers, advanced audio/HDR features,
+libmpv PiP and other platform frontends are planned. Real-world codec
+support, file operations and WebDAV behavior need physical-device testing.
 
-## Roadmap boundaries
-
-Network SMB/SFTP/FTP/WebDAV/NFS/DLNA file browsing, libmpv/FFmpeg codec
-fallback, external subtitles and full background transfer support are pending.
-The current Rust transfer registry is a policy layer, **not** a working
-background download engine.
-
-The reference nPlayer Plus walkthrough guided navigation and UX, but no
-proprietary nPlayer assets, SDK or source code are redistributed. Open source
-licensing does not waive third-party codec patents or trademark rights.
+No proprietary nPlayer code or graphics are distributed. MIT licensing
+for Vidrane does not waive upstream codec licenses or patent obligations.

@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - ios/mpv/**
-      - ios/Vidrane/Sources/VidraneMPVPlaybackView.swift
+      - ios/Vidrane/Sources/**
+      - ios/Vidrane/project.yml
+      - crates/**
       - .github/workflows/ios-mpv.yml
 
 permissions:
