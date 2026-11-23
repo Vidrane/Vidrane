@@ -124,6 +124,7 @@ final class MediaLibrary: ObservableObject {
     func delete(_ file: LocalMedia) {
         do {
             try fm.removeItem(at: file.url)
+            WatchHistory.shared.remove(url: file.url)
             for index in playlists.indices { playlists[index].files.removeAll { $0 == file.id } }
             savePlaylists()
             refreshFiles()
@@ -152,6 +153,7 @@ final class MediaLibrary: ObservableObject {
         }
         do {
             try fm.moveItem(at: file.url, to: destination)
+            WatchHistory.shared.rename(from: file.url, to: destination)
             for index in playlists.indices {
                 playlists[index].files = playlists[index].files.map { $0 == file.id ? name : $0 }
             }

@@ -39,6 +39,7 @@ enum MediaFilter: String, CaseIterable, Identifiable {
 
 struct LocalView: View {
     @EnvironmentObject private var library: MediaLibrary
+    @ObservedObject private var watchHistory = WatchHistory.shared
     @AppStorage("showExtensions") private var showExtensions = true
     @AppStorage("localSort") private var sortPreference = MediaSort.name.rawValue
     @AppStorage("localSortDescending") private var descending = false
@@ -77,8 +78,44 @@ struct LocalView: View {
         }
     }
 
+    private var interruptedFiles: [LocalMedia] {
+        library.files
+            .filter { $0.kind.playable && watchHistory.checkpoint(for: $0.url) != nil }
+            .sorted {
+                (watchHistory.checkpoint(for: $0.url)?.updatedAt ?? .distantPast) >
+                (watchHistory.checkpoint(for: $1.url)?.updatedAt ?? .distantPast)
+            }
+    }
+
     var body: some View {
         List {
+            if !interruptedFiles.isEmpty {
+                Section("Продолжить просмотр") {
+                    ForEach(Array(interruptedFiles.prefix(5))) { file in
+                        Button {
+                            library.play(file)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "play.circle.fill")
+                                    .foregroundStyle(VidraneStyle.accent)
+                                VStack(alignment: .leading, spacing: 5) {
+                                    Text(file.name)
+                                        .lineLimit(1)
+                                        .foregroundStyle(.primary)
+                                    if let checkpoint = watchHistory.checkpoint(for: file.url) {
+                                        ProgressView(value: checkpoint.fraction)
+                                            .tint(VidraneStyle.accent)
+                                        Text("Продолжить с \(Int(checkpoint.seconds / 60)) мин")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Section {
                 Picker("Фильтр", selection: $filter) {
                     ForEach(MediaFilter.allCases) { item in
@@ -213,6 +250,11 @@ struct LocalView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                if let checkpoint = watchHistory.checkpoint(for: file.url) {
+                    ProgressView(value: checkpoint.fraction)
+                        .tint(VidraneStyle.accent)
+                        .accessibilityLabel("Просмотрено \(Int(checkpoint.fraction * 100)) процентов")
+                }
             }
             Spacer()
             Image(systemName: file.kind.playable ? "play.circle" : "info.circle")
