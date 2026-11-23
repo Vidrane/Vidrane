@@ -60,3 +60,14 @@ Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen caption
 ## Network and transfers
 
 An iOS HTTPS WebDAV browser supports Basic authorization, folder navigation and importing remote files into local media. Direct HTTPS downloads and authenticated WebDAV downloads now share a foreground queue with progress, cancel and retry. For security details and limits see [network architecture](docs/NETWORK.md). WebDAV interoperability still needs live-server testing.
+
+
+## Experimental libmpv iOS build
+
+Vidrane has a separately built libmpv/FFmpeg adapter using a pinned
+third-party MPVKit wrapper and XCFramework. The default app remains
+AVFoundation-based, so Personal and Developer builds remain lightweight.
+With libmpv linked, the decoder can be selected in Settings, and
+unsupported native formats can be retried with the alternative backend.
+The experiments are not yet tested on a physical iPhone.
+See [MPV iOS build guide](docs/MPV_IOS.md).

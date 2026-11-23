@@ -36,3 +36,9 @@ Validation:
 - Physical-device testing of decoder, PiP and subtitle behavior is pending.
 
 Current network work: iOS WebDAV browsing, Keychain credentials, shared Rust DAV XML parsing, foreground transfer queue; see NETWORK.md. Testing on a physical device is intentionally deferred until broader basic feature coverage.
+
+Current milestone: an independently built experimental MPVKit integration
+with pinned source and libmpv/FFmpeg XCFramework is being validated in CI.
+The standard Personal/Developer IPA variants continue using AVFoundation.
+Actual libmpv performance, codecs and iOS hardware behavior remain untested.
+See MPV_IOS.md for reproduction steps and licensing concerns.
