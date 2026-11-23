@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
     @AppStorage("decoderPreference") private var decoderPreference = DecoderPreference.automatic.rawValue
+    @AppStorage("mpvHardwareDecode") private var mpvHardwareDecode = "videotoolbox"
     @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
     @AppStorage("subtitleDelay") private var subtitleDelay = 0.0
     @AppStorage("subtitleBackground") private var subtitleBackground = true
@@ -78,10 +79,16 @@ struct SettingsView: View {
                     "libmpv установлен",
                     value: PlaybackDecoderAvailability.hasLibmpv ? "Да" : "Нет"
                 )
+                if PlaybackDecoderAvailability.hasLibmpv {
+                    Picker("libmpv: декодирование", selection: $mpvHardwareDecode) {
+                        Text("VideoToolbox (аппаратное)").tag("videotoolbox")
+                        Text("Программное").tag("software")
+                    }
+                }
             } header: {
                 Text("Декодер видео и аудио")
             } footer: {
-                Text("Автоматический выбор ориентируется на тип файла; реальную поддержку кодека определяет сам движок. libmpv доступен только в сборках с библиотекой. Apple Player и Vidrane Player — отдельная настройка интерфейса.")
+                Text("В обеих основных IPA доступен libmpv. Автоматический режим ориентируется на расширение файла, а не гарантирует поддержку кодека. При выборе Apple Player автоматический режим использует AVFoundation. Принудительный libmpv показывает собственные элементы управления Vidrane, поскольку системный Apple Player не работает с libmpv. Изменение аппаратного декодирования применяется к следующему видео.")
             }
 
             Section("Внешние субтитры") {

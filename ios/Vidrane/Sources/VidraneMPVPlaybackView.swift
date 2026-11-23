@@ -46,7 +46,8 @@ final class VidraneMPVSession: ObservableObject {
         try core.create()
 
         var configuration = MPVConfiguration()
-        configuration.hwdec = "videotoolbox"
+        configuration.hwdec = UserDefaults.standard.string(forKey: "mpvHardwareDecode") == "software"
+            ? "no" : "videotoolbox"
         // Vidrane owns resume state so switching decoders uses the same
         // watch-history data. Don't enable mpv's parallel watch-later store.
         configuration.resumePlaybackEnabled = false
@@ -65,6 +66,7 @@ final class VidraneMPVSession: ObservableObject {
             throw error
         }
         started = true
+        UIApplication.shared.isIdleTimerDisabled = UserDefaults.standard.object(forKey: "keepScreenOn") as? Bool ?? true
         lastSaved = Date()
     }
 
@@ -73,6 +75,10 @@ final class VidraneMPVSession: ObservableObject {
     func load() {
         guard started && !playbackLoaded else { return }
         playbackLoaded = true
+        core.panscan = UserDefaults.standard.string(forKey: "videoScaling") == "fill" ? 1 : 0
+        core.subtitleDelay = UserDefaults.standard.double(forKey: "subtitleDelay")
+        let fontPoints = UserDefaults.standard.double(forKey: "subtitleFontSize")
+        core.subtitleScale = fontPoints > 0 ? max(0.5, min(2.0, fontPoints / 24.0)) : 1.0
         core.playbackSpeed = max(0.5, min(2.0, UserDefaults.standard.double(forKey: "playbackRate") == 0
             ? 1.0 : UserDefaults.standard.double(forKey: "playbackRate")))
         let source = request.url.isFileURL ? request.url.path : request.url.absoluteString
@@ -141,6 +147,26 @@ final class VidraneMPVSession: ObservableObject {
         UserDefaults.standard.set(clamped, forKey: "playbackRate")
     }
 
+    func setScaling(_ mode: VideoScaling) {
+        guard started else { return }
+        core.panscan = mode == .fill ? 1.0 : 0.0
+        UserDefaults.standard.set(mode.rawValue, forKey: "videoScaling")
+    }
+
+    func adjustSubtitleDelay(by difference: Double) {
+        guard started else { return }
+        let previous = UserDefaults.standard.double(forKey: "subtitleDelay")
+        let seconds = max(-10.0, min(10.0, previous + difference))
+        core.subtitleDelay = seconds
+        UserDefaults.standard.set(seconds, forKey: "subtitleDelay")
+    }
+
+    func resetSubtitleDelay() {
+        guard started else { return }
+        core.subtitleDelay = 0
+        UserDefaults.standard.set(0.0, forKey: "subtitleDelay")
+    }
+
     func selectAudio(_ track: MPVTrack?) {
         core.selectAudioTrack(track?.id)
         tracks = core.trackList()
@@ -182,6 +208,7 @@ final class VidraneMPVSession: ObservableObject {
         core.stop()
         core.destroy()
         started = false
+        UIApplication.shared.isIdleTimerDisabled = false
         playbackLoaded = false
         sink.receive = nil
         if let tempSubtitle {
@@ -242,6 +269,8 @@ struct VidraneMPVPlaybackView: View {
     @State private var pickingSubtitle = false
     @State private var scrubbing = false
     @State private var previewTime = 0.0
+    @AppStorage("videoScaling") private var scaling = VideoScaling.fit.rawValue
+    @AppStorage("subtitleDelay") private var subtitleDelay = 0.0
 
     private let ticker = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
@@ -264,10 +293,29 @@ struct VidraneMPVPlaybackView: View {
             .padding(12)
 
             ZStack {
-                MPVRenderSurface(session: session)
-                    .background(.black)
-                    .contentShape(Rectangle())
-                    .onTapGesture { showControls.toggle() }
+                GeometryReader { geometry in
+                    MPVRenderSurface(session: session)
+                        .background(.black)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            SpatialTapGesture(count: 2)
+                                .exclusively(before: TapGesture())
+                                .onEnded { gesture in
+                                    switch gesture {
+                                    case .first(let doubleTap):
+                                        session.skip(
+                                            doubleTap.location.x < geometry.size.width / 2
+                                                ? -10 : 10
+                                        )
+                                    case .second:
+                                        withAnimation(.easeInOut(duration: 0.18)) {
+                                            showControls.toggle()
+                                        }
+                                    }
+                                }
+                        )
+                }
 
                 if session.isBuffering {
                     ProgressView()
@@ -360,6 +408,24 @@ struct VidraneMPVPlaybackView: View {
                 }
 
                 Menu {
+                    ForEach(VideoScaling.allCases) { option in
+                        Button {
+                            scaling = option.rawValue
+                            session.setScaling(option)
+                        } label: {
+                            if scaling == option.rawValue {
+                                Label(option.title, systemImage: "checkmark")
+                            } else {
+                                Text(option.title)
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "aspectratio")
+                }
+                .accessibilityLabel("Масштаб видео")
+
+                Menu {
                     Section("Аудиодорожки") {
                         ForEach(session.tracks.filter { $0.type == .audio }) { track in
                             Button(track.title ?? track.lang ?? "Аудио \(track.id)") {
@@ -375,6 +441,22 @@ struct VidraneMPVPlaybackView: View {
                             }
                         }
                         Button("Добавить файл субтитров…") { pickingSubtitle = true }
+                        Button("Субтитры раньше на 0,5 с") {
+                            session.adjustSubtitleDelay(by: -0.5)
+                        }
+                        .disabled(subtitleDelay <= -10)
+                        Button("Субтитры позже на 0,5 с") {
+                            session.adjustSubtitleDelay(by: 0.5)
+                        }
+                        .disabled(subtitleDelay >= 10)
+                        Button {
+                            session.resetSubtitleDelay()
+                        } label: {
+                            Label(
+                                "Сбросить задержку (\(String(format: "%+.1f", subtitleDelay)) с)",
+                                systemImage: "arrow.counterclockwise"
+                            )
+                        }
                     }
                 } label: {
                     Image(systemName: "captions.bubble")

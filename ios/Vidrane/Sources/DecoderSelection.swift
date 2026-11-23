@@ -50,11 +50,18 @@ enum PlaybackDecoderAvailability {
 struct PlaybackHostView: View {
     let request: PlaybackRequest
     @AppStorage("decoderPreference") private var storedPreference = DecoderPreference.automatic.rawValue
+    @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
     @State private var overrideLibmpv: Bool?
 
     private var libmpvSelected: Bool {
         if let overrideLibmpv { return overrideLibmpv }
         let pref = DecoderPreference(rawValue: storedPreference) ?? .automatic
+        // Apple AVPlayerViewController can only wrap an AVPlayer. Automatic
+        // routing respects that UI choice; explicit libmpv remains allowed
+        // but uses Vidrane's custom mpv controls instead of Apple controls.
+        if pref == .automatic && playerPresentation == PlayerPresentation.apple.rawValue {
+            return false
+        }
         return PlaybackDecoderAvailability.prefersLibmpv(for: request.url, preference: pref)
     }
 
