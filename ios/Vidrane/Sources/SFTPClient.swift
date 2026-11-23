@@ -1,5 +1,6 @@
 import Citadel
 import Foundation
+import NIO
 import NIOSSH
 
 struct SFTPEntry: Identifiable, Hashable {
@@ -104,6 +105,64 @@ final class SFTPConnection {
         return entries.sorted {
             if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        }
+    }
+
+    /// Create a subdirectory inside the configured SSH root.
+    func createDirectory(named name: String, in directory: String) async throws {
+        let parent = try await resolved(directory)
+        let destination = try SFTPPathPolicy.child(
+            name, in: parent, root: canonicalRoot
+        )
+        try await sftp.createDirectory(atPath: destination)
+    }
+
+    /// Remove a file or an EMPTY directory only. SFTP rmdir deliberately
+    /// refuses nonempty folders; there is no recursive delete here.
+    func remove(_ entry: SFTPEntry) async throws {
+        let real = try await resolved(entry.path)
+        guard real != canonicalRoot else { throw SFTPError.escapedRoot }
+        if entry.isDirectory {
+            try await sftp.rmdir(at: real)
+        } else {
+            try await sftp.remove(at: real)
+        }
+    }
+
+    /// Upload the given file with SSH_FXF_EXCL so compliant SFTP servers
+    /// refuse to overwrite a preexisting file. No full-file RAM buffering.
+    func upload(localURL: URL, in directory: String) async throws {
+        let scoped = localURL.startAccessingSecurityScopedResource()
+        defer { if scoped { localURL.stopAccessingSecurityScopedResource() } }
+        var isDirectory: ObjCBool = false
+        guard localURL.isFileURL,
+              FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else { throw SFTPError.unsupportedEntry }
+
+        let parent = try await resolved(directory)
+        let destination = try SFTPPathPolicy.child(
+            localURL.lastPathComponent, in: parent, root: canonicalRoot
+        )
+        let source = try FileHandle(forReadingFrom: localURL)
+        defer { try? source.close() }
+        let remote = try await sftp.openFile(
+            filePath: destination, flags: [.write, .create, .forceCreate]
+        )
+        do {
+            var offset: UInt64 = 0
+            while let bytes = try source.read(upToCount: 32_768), !bytes.isEmpty {
+                try Task.checkCancellation()
+                var buffer = ByteBufferAllocator().buffer(capacity: bytes.count)
+                buffer.writeBytes(bytes)
+                try await remote.write(buffer, at: offset)
+                offset += UInt64(bytes.count)
+            }
+            try await remote.close()
+        } catch {
+            // Do not automatically delete: a remote concurrent writer could
+            // have replaced the partial file since we created it.
+            try? await remote.close()
+            throw error
         }
     }
 
