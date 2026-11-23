@@ -63,6 +63,9 @@ unsigned artifacts require legitimate signing/provisioning for a phone.
 
 ## Documentation
 
+- [Development roadmap and milestone checklist](docs/ROADMAP.md)
+- [nPlayer Plus feature parity matrix](docs/NPLAYER_PARITY.md)
+
 - [Architecture](docs/ARCHITECTURE.md)
 - [Development status](docs/PHASE1.md)
 - [Local file manager](docs/LOCAL_FILES.md)
