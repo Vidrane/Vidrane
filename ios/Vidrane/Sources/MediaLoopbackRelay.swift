@@ -158,7 +158,7 @@ final class MediaLoopbackRelay {
     }
 
     private func send(_ bytes: Data, to connection: NWConnection) async throws {
-        try await withCheckedThrowingContinuation { continuation in
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: bytes, completion: .contentProcessed { error in
                 if let error {
                     continuation.resume(throwing: error)
