@@ -218,7 +218,7 @@ struct SFTPBrowserView: View {
             Button("Отмена", role: .cancel) {}
         }
         .confirmationDialog(
-            "Удалить \\(deleteTarget?.name ?? "элемент") с SFTP?",
+            "Удалить \(deleteTarget?.name ?? "элемент") с SFTP?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
