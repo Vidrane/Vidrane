@@ -91,6 +91,7 @@ actor WebDAVRemoteBytes: RemoteMediaBytes {
             var request = URLRequest(url: entry.url)
             request.httpMethod = "GET"
             request.setValue("bytes=0-0", forHTTPHeaderField: "Range")
+            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
             request.cachePolicy = .reloadIgnoringLocalCacheData
             if let header = access.authorizationHeader {
                 request.setValue(header, forHTTPHeaderField: "Authorization")
@@ -133,11 +134,13 @@ actor WebDAVRemoteBytes: RemoteMediaBytes {
         request.timeoutInterval = 45
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("bytes=\(offset)-\(end)", forHTTPHeaderField: "Range")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         if let authorization { request.setValue(authorization, forHTTPHeaderField: "Authorization") }
         let (bytes, response) = try await session.bytes(for: request)
         defer { bytes.task.cancel() }
         guard let http = response as? HTTPURLResponse,
               http.statusCode == 206,
+              (http.value(forHTTPHeaderField: "Content-Encoding") ?? "identity").lowercased() == "identity",
               let range = http.value(forHTTPHeaderField: "Content-Range"),
               range.withCString({
                   vidrane_content_range_total(

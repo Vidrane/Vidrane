@@ -474,6 +474,7 @@ final class TransferCenter: ObservableObject {
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 120
         request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
+        request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         if let auth { request.setValue(auth, forHTTPHeaderField: "Authorization") }
         if offset > 0, let etag = entry.etag {
             request.setValue(etag, forHTTPHeaderField: "If-Range")
@@ -481,7 +482,8 @@ final class TransferCenter: ObservableObject {
 
         let (bytes, response) = try await session.bytes(for: request)
         guard let http = response as? HTTPURLResponse,
-              http.statusCode == 200 || http.statusCode == 206 else {
+              http.statusCode == 200 || http.statusCode == 206,
+              (http.value(forHTTPHeaderField: "Content-Encoding") ?? "identity").lowercased() == "identity" else {
             throw WebDAVError.invalidResponse
         }
 
