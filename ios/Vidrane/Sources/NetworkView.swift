@@ -4,13 +4,14 @@ struct NetworkView: View {
     @EnvironmentObject private var library: MediaLibrary
     @EnvironmentObject private var webdav: WebDAVStore
     @EnvironmentObject private var sftpStore: SFTPStore
+    @EnvironmentObject private var smbStore: SMBStore
     @EnvironmentObject private var transfers: TransferCenter
     @State private var directURL = ""
     @State private var addingWebDAV = false
     @State private var addingSFTP = false
+    @State private var addingSMB = false
 
     private let planned: [(String, String)] = [
-        ("SMB / CIFS", "Подключение к сетевым папкам"),
         ("NFS", "Сетевые файловые системы"),
         ("DLNA / UPnP", "Обнаружение медиасерверов")
     ]
@@ -114,6 +115,39 @@ struct NetworkView: View {
                 Text("SSH-ключ сервера должен быть проверен и указан заранее. Пароль хранится в Keychain.")
             }
 
+            Section {
+                ForEach(smbStore.servers) { server in
+                    NavigationLink {
+                        SMBBrowserView(server: server, directory: server.root)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading) {
+                                Text(server.title)
+                                Text("\(server.host)/\(server.share)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "externaldrive")
+                                .foregroundStyle(VidraneStyle.accent)
+                        }
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) { smbStore.remove(server) } label: {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    }
+                }
+                Button {
+                    addingSMB = true
+                } label: {
+                    Label("Добавить SMB", systemImage: "plus")
+                }
+            } header: {
+                Text("SMB2/3")
+            } footer: {
+                Text("Для подключения необходимо SMB3-шифрование. Учётные данные хранятся в Keychain.")
+            }
+
             Section("Другие протоколы — в разработке") {
                 ForEach(planned.indices, id: \.self) { index in
                     let (title, description) = planned[index]
@@ -144,6 +178,11 @@ struct NetworkView: View {
         .sheet(isPresented: $addingSFTP) {
             NavigationStack {
                 SFTPAddView()
+            }
+        }
+        .sheet(isPresented: $addingSMB) {
+            NavigationStack {
+                SMBAddView()
             }
         }
     }
