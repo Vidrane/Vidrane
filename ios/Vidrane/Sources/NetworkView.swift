@@ -581,6 +581,7 @@ struct WebDAVFolderView: View {
                 url: entry.url,
                 filename: entry.name,
                 source: "WebDAV",
+                serverID: server.id,
                 authorization: access.authorizationHeader,
                 playWhenFinished: play,
                 library: library

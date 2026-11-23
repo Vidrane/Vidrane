@@ -47,6 +47,7 @@ struct AppRootView: View {
         .environmentObject(sftpStore)
         .environmentObject(smbStore)
         .environmentObject(transfers)
+        .onAppear { transfers.attach(library: library) }
         .fullScreenCover(item: $library.playback) { request in
             PlaybackHostView(request: request)
         }

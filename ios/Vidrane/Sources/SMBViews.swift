@@ -75,6 +75,7 @@ struct SMBAddView: View {
 struct SMBBrowserView: View {
     @EnvironmentObject private var store: SMBStore
     @EnvironmentObject private var library: MediaLibrary
+    @EnvironmentObject private var transfers: TransferCenter
     let server: SMBServer
     let directory: String
 
@@ -115,7 +116,9 @@ struct SMBBrowserView: View {
                 } else {
                     Menu {
                         Button {
-                            Task { await download(entry, play: false) }
+                            transfers.enqueueSMB(
+                                server: server, entry: entry, library: library
+                            )
                         } label: {
                             Label("Скачать в медиатеку", systemImage: "arrow.down.circle")
                         }
@@ -126,7 +129,10 @@ struct SMBBrowserView: View {
                                 Label("Воспроизвести через libmpv", systemImage: "film")
                             }
                             Button {
-                                Task { await download(entry, play: true) }
+                                transfers.enqueueSMB(
+                                    server: server, entry: entry,
+                                    playWhenFinished: true, library: library
+                                )
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
                             }
