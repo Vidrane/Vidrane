@@ -75,6 +75,7 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
         Task { @MainActor [weak owner] in
             owner?.progress(
                 taskID: id,
+                taskIdentifier: downloadTask.taskIdentifier,
                 bytes: totalBytesWritten,
                 total: totalBytesExpectedToWrite
             )
@@ -104,7 +105,12 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
             failure = "Сервер вернул HTTP \(status ?? 0)."
         }
         Task { @MainActor [weak owner] in
-            owner?.completed(taskID: id, temporary: safeLocation, error: failure)
+            owner?.completed(
+                taskID: id,
+                taskIdentifier: downloadTask.taskIdentifier,
+                temporary: safeLocation,
+                error: failure
+            )
         }
     }
 
@@ -115,7 +121,7 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
         guard let error else { return }
         let id = task.taskDescription
         Task { @MainActor [weak owner] in
-            owner?.failed(taskID: id, error: error)
+            owner?.failed(taskID: id, taskIdentifier: task.taskIdentifier, error: error)
         }
     }
 }
@@ -210,17 +216,19 @@ final class TransferCenter: ObservableObject {
         task.resume()
     }
 
-    func progress(taskID: String?, bytes: Int64, total: Int64) {
+    func progress(taskID: String?, taskIdentifier: Int, bytes: Int64, total: Int64) {
         guard let taskID, let id = UUID(uuidString: taskID),
-              let row = index(id), records[row].status == .running else { return }
+              let row = index(id), records[row].status == .running,
+              contexts[id]?.task?.taskIdentifier == taskIdentifier else { return }
         records[row].receivedBytes = bytes
         records[row].expectedBytes = total > 0 ? total : nil
     }
 
-    func completed(taskID: String?, temporary: URL?, error: String?) {
+    func completed(taskID: String?, taskIdentifier: Int, temporary: URL?, error: String?) {
         guard let taskID, let id = UUID(uuidString: taskID),
               let row = index(id), let context = contexts[id],
-              records[row].status == .running else {
+              records[row].status == .running,
+              context.task?.taskIdentifier == taskIdentifier else {
             if let temporary { try? FileManager.default.removeItem(at: temporary) }
             return
         }
@@ -239,6 +247,8 @@ final class TransferCenter: ObservableObject {
         do {
             let file = try library.importRemoteFile(at: temporary, filename: context.filename)
             records[row].status = .finished
+            records[row].receivedBytes = file.bytes
+            records[row].expectedBytes = file.bytes
             if context.playWhenFinished && file.kind.playable {
                 library.play(file)
             }
@@ -250,9 +260,10 @@ final class TransferCenter: ObservableObject {
         }
     }
 
-    func failed(taskID: String?, error: Error) {
+    func failed(taskID: String?, taskIdentifier: Int, error: Error) {
         guard let taskID, let id = UUID(uuidString: taskID),
-              let row = index(id), records[row].status == .running else { return }
+              let row = index(id), records[row].status == .running,
+              contexts[id]?.task?.taskIdentifier == taskIdentifier else { return }
         records[row].status = .failed
         records[row].error = (error as? URLError)?.code == .cancelled
             ? "Соединение прервано." : "Ошибка сети: \(error.localizedDescription)"

@@ -23,7 +23,7 @@ struct DownloadsView: View {
                             Text(item.name).lineLimit(1)
                             Text(item.status.description)
                                 .font(.caption)
-                                .foregroundStyle(item.status == .failed ? .red : .secondary)
+                                .foregroundColor(item.status == .failed ? .red : .secondary)
                         }
                         Spacer()
                         if item.status == .running {
@@ -64,8 +64,10 @@ struct DownloadsView: View {
                 .padding(.vertical, 4)
                 .contextMenu {
                     if item.status == .failed || item.status == .cancelled {
-                        Button("Повторить", systemImage: "arrow.clockwise") {
+                        Button {
                             transfers.retry(item.id)
+                        } label: {
+                            Label("Повторить", systemImage: "arrow.clockwise")
                         }
                     }
                     Button(role: .destructive) {
