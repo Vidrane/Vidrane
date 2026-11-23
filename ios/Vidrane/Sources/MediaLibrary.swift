@@ -48,6 +48,13 @@ struct PlaybackRequest: Identifiable {
     let id = UUID()
     let url: URL
     let title: String
+    let webDAVStream: WebDAVRangeStream?
+
+    init(url: URL, title: String, webDAVStream: WebDAVRangeStream? = nil) {
+        self.url = url
+        self.title = title
+        self.webDAVStream = webDAVStream
+    }
 }
 
 enum LocalFileError: LocalizedError {
@@ -334,6 +341,16 @@ final class MediaLibrary: ObservableObject {
             return
         }
         playback = PlaybackRequest(url: file.url, title: file.name)
+    }
+
+    /// Start a verified byte-range WebDAV stream without importing the file.
+    /// AVFoundation is used for this synthetic asset, not libmpv.
+    func playWebDAV(_ source: WebDAVRangeStream, title: String) {
+        playback = PlaybackRequest(
+            url: source.asset.url,
+            title: title,
+            webDAVStream: source
+        )
     }
 
     func playRemote(_ address: String) {

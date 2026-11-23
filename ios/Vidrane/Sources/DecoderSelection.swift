@@ -60,6 +60,9 @@ struct PlaybackHostView: View {
     @State private var overrideLibmpv: Bool?
 
     private var libmpvSelected: Bool {
+        // Authenticated DAV streaming uses AVAssetResourceLoader, which
+        // libmpv cannot consume. Do not expose an invalid decoder fallback.
+        if request.webDAVStream != nil { return false }
         if let overrideLibmpv { return overrideLibmpv }
         let pref = DecoderPreference(rawValue: storedPreference) ?? .automatic
         // Apple AVPlayerViewController can only wrap an AVPlayer. Automatic
@@ -79,9 +82,11 @@ struct PlaybackHostView: View {
                     overrideLibmpv = false
                 }
             } else {
-                PlaybackView(request: request) {
-                    overrideLibmpv = true
-                }
+                PlaybackView(
+                    request: request,
+                    onTryLibmpv: request.webDAVStream == nil
+                        ? { overrideLibmpv = true } : nil
+                )
             }
             #else
             PlaybackView(request: request, onTryLibmpv: nil)

@@ -462,7 +462,12 @@ struct PlaybackView: View {
         seekingToResume = false
         lastCheckpointAt = Date()
         playbackError = nil
-        let item = AVPlayerItem(url: request.url)
+        let item: AVPlayerItem
+        if let stream = request.webDAVStream {
+            item = AVPlayerItem(asset: stream.asset)
+        } else {
+            item = AVPlayerItem(url: request.url)
+        }
         player.replaceCurrentItem(with: item)
         loadTracks(for: item)
         player.play()
@@ -475,6 +480,7 @@ struct PlaybackView: View {
         saveCheckpoint()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        request.webDAVStream?.close()
         UIApplication.shared.isIdleTimerDisabled = false
     }
 

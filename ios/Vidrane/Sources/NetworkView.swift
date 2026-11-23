@@ -76,7 +76,7 @@ struct NetworkView: View {
             } header: {
                 Text("WebDAV")
             } footer: {
-                Text("Поддерживаются HTTPS WebDAV, просмотр папок, Basic-авторизация и скачивание в локальную медиатеку. Пароли хранятся в Keychain. Прямое воспроизведение защищённых файлов пока не реализовано.")
+                Text("WebDAV поддерживает защищённые HTTPS-подключения, загрузку и просмотр MP4/MOV/M4V и совместимого аудио по HTTP Range без сохранения файла. Для серверов без Range остаётся скачивание.")
             }
 
             Section("Другие протоколы — в разработке") {
@@ -184,6 +184,7 @@ struct WebDAVFolderView: View {
     @State private var addingFolder = false
     @State private var folderName = ""
     @State private var uploading = false
+    @State private var openingStream: Set<URL> = []
     @State private var renameTarget: WebDAVEntry?
     @State private var renameText = ""
     @State private var deleteTarget: WebDAVEntry?
@@ -229,6 +230,15 @@ struct WebDAVFolderView: View {
                             Label("Скачать в медиатеку", systemImage: "arrow.down.circle")
                         }
                         if VidraneMediaKind(filename: entry.name).playable {
+                            if WebDAVRangeStream.allowedExtensions.contains(
+                                entry.url.pathExtension.lowercased()
+                            ) {
+                                Button {
+                                    Task { await playStream(entry) }
+                                } label: {
+                                    Label("Воспроизвести без скачивания", systemImage: "play.rectangle")
+                                }
+                            }
                             Button {
                                 transfer(entry, play: true)
                             } label: {
@@ -257,7 +267,8 @@ struct WebDAVFolderView: View {
                                 }
                             }
                             Spacer()
-                            if transfers.isDownloading(entry.url) {
+                            if transfers.isDownloading(entry.url) ||
+                                openingStream.contains(entry.url) {
                                 ProgressView()
                             } else {
                                 Image(systemName: "ellipsis.circle")
@@ -265,7 +276,10 @@ struct WebDAVFolderView: View {
                             }
                         }
                     }
-                    .disabled(transfers.isDownloading(entry.url) || mutating)
+                    .disabled(
+                        transfers.isDownloading(entry.url) ||
+                        openingStream.contains(entry.url) || mutating
+                    )
                 }
             }
         }
@@ -440,6 +454,19 @@ struct WebDAVFolderView: View {
                 try await WebDAVClient.shared.upload(url, in: directory, access: access)
             }
             await reload()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func playStream(_ entry: WebDAVEntry) async {
+        guard !openingStream.contains(entry.url) else { return }
+        openingStream.insert(entry.url)
+        defer { openingStream.remove(entry.url) }
+        do {
+            let access = try webdav.access(server)
+            let source = try await WebDAVRangeStream.open(file: entry, access: access)
+            library.playWebDAV(source, title: entry.name)
         } catch {
             errorText = error.localizedDescription
         }
