@@ -53,7 +53,10 @@ mod tests {
     #[test]
     fn accepts_precise_partial_content() {
         assert_eq!(verify_content_range("bytes 0-0/900", 0, 0, None), Some(900));
-        assert_eq!(verify_content_range("bytes 100-199/900", 100, 199, Some(900)), Some(900));
+        assert_eq!(
+            verify_content_range("bytes 100-199/900", 100, 199, Some(900)),
+            Some(900)
+        );
         assert_eq!(verify_content_range("BYTES 0-0/1", 0, 0, None), Some(1));
     }
 
@@ -81,7 +84,10 @@ mod tests {
 
     #[test]
     fn rejects_integer_overflow_and_invalid_total() {
-        assert_eq!(verify_content_range("bytes 0-0/18446744073709551616", 0, 0, None), None);
+        assert_eq!(
+            verify_content_range("bytes 0-0/18446744073709551616", 0, 0, None),
+            None
+        );
         assert_eq!(verify_content_range("bytes 5-6/6", 5, 6, None), None);
         assert_eq!(verify_content_range("bytes 2-1/5", 2, 1, None), None);
     }
