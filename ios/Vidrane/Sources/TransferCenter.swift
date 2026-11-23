@@ -1,7 +1,9 @@
 import Foundation
+import Security
 import SwiftUI
 
-enum DownloadStatus: String {
+enum DownloadStatus: String, Codable {
+    case waiting
     case running
     case finished
     case failed
@@ -9,6 +11,7 @@ enum DownloadStatus: String {
 
     var description: String {
         switch self {
+        case .waiting: return "В очереди / восстановление"
         case .running: return "Скачивание"
         case .finished: return "Готово"
         case .failed: return "Ошибка"
@@ -17,7 +20,7 @@ enum DownloadStatus: String {
     }
 }
 
-struct DownloadRecord: Identifiable {
+struct DownloadRecord: Identifiable, Codable {
     let id: UUID
     let name: String
     var source: String = "HTTPS"
@@ -32,369 +35,577 @@ struct DownloadRecord: Identifiable {
     }
 }
 
-/// The access URL and any Authorization header are kept in RAM only, never
-/// added to the visible model or user defaults. No download credentials
-/// are printed in error messages.
-private final class DownloadContext {
-    let request: URLRequest
-    let filename: String
-    let playWhenFinished: Bool
-    weak var library: MediaLibrary?
-    var task: URLSessionDownloadTask?
-
-    init(request: URLRequest, filename: String,
-         playWhenFinished: Bool, library: MediaLibrary) {
-        self.request = request
-        self.filename = filename
-        self.playWhenFinished = playWhenFinished
-        self.library = library
-    }
+private enum TransferKind: String, Codable {
+    case https, webdav, sftp, smb
 }
 
-private final class SFTPDownloadContext {
-    let server: SFTPServer
-    let entry: SFTPEntry
-    let playWhenFinished: Bool
-    weak var library: MediaLibrary?
-    var task: Task<Void, Never>?
-    var generation = UUID()
-
-    init(server: SFTPServer, entry: SFTPEntry,
-         playWhenFinished: Bool, library: MediaLibrary) {
-        self.server = server
-        self.entry = entry
-        self.playWhenFinished = playWhenFinished
-        self.library = library
-    }
+private struct TransferJournalEntry: Codable {
+    var record: DownloadRecord
+    let kind: TransferKind
+    let serverID: UUID?
+    let remotePath: String?
+    var etag: String?
+    var autoPlay: Bool
 }
 
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
-    weak var owner: TransferCenter?
-
-    init(owner: TransferCenter) { self.owner = owner }
-
+private final class TransferRedirectBlocker: NSObject, URLSessionTaskDelegate {
     func urlSession(
         _ session: URLSession, task: URLSessionTask,
         willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
+        newRequest: URLRequest,
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
-        // Never leak Authorization to a redirect target.
         completionHandler(nil)
-    }
-
-    func urlSession(
-        _ session: URLSession, downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        let id = downloadTask.taskDescription
-        Task { @MainActor [weak owner] in
-            owner?.progress(
-                taskID: id,
-                taskIdentifier: downloadTask.taskIdentifier,
-                bytes: totalBytesWritten,
-                total: totalBytesExpectedToWrite
-            )
-        }
-    }
-
-    func urlSession(
-        _ session: URLSession, downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        let id = downloadTask.taskDescription
-        let status = (downloadTask.response as? HTTPURLResponse)?.statusCode
-        // URLSession removes the temporary download when this delegate
-        // callback returns. Move it to a private temporary location first.
-        var safeLocation: URL?
-        var failure: String?
-        if status == 200 {
-            let destination = FileManager.default.temporaryDirectory
-                .appendingPathComponent("vidrane-transfer-\(UUID().uuidString)")
-            do {
-                try FileManager.default.moveItem(at: location, to: destination)
-                safeLocation = destination
-            } catch {
-                failure = "Не удалось сохранить временный файл."
-            }
-        } else {
-            failure = "Сервер вернул HTTP \(status ?? 0)."
-        }
-        Task { @MainActor [weak owner] in
-            owner?.completed(
-                taskID: id,
-                taskIdentifier: downloadTask.taskIdentifier,
-                temporary: safeLocation,
-                error: failure
-            )
-        }
-    }
-
-    func urlSession(
-        _ session: URLSession, task: URLSessionTask,
-        didCompleteWithError error: Error?
-    ) {
-        guard let error else { return }
-        let id = task.taskDescription
-        Task { @MainActor [weak owner] in
-            owner?.failed(taskID: id, taskIdentifier: task.taskIdentifier, error: error)
-        }
     }
 }
 
-/// Foreground download manager with live progress, cancellation and retries.
-/// Background URLSession and durable resume-data storage are future work.
+/// Journal and .part files live in Application Support. Account passwords
+/// stay in the existing server Keychains. Direct HTTPS URLs (including
+/// signed query tokens) are stored only in Keychain, not in the JSON journal.
+///
+/// Transfers are foreground tasks. On launch interrupted tasks return to
+/// "waiting" and automatically continue when the MediaLibrary is attached.
+/// Supported providers resume from verified partial byte offsets.
 @MainActor
 final class TransferCenter: ObservableObject {
     static let shared = TransferCenter()
 
     @Published private(set) var records: [DownloadRecord] = []
-    private var contexts: [UUID: DownloadContext] = [:]
-    private var sftpContexts: [UUID: SFTPDownloadContext] = [:]
-    private lazy var delegate = DownloadDelegate(owner: self)
-    private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        return URLSession(configuration: config, delegate: delegate, delegateQueue: .main)
-    }()
+    private var journal: [UUID: TransferJournalEntry] = [:]
+    private var work: [UUID: Task<Void, Never>] = [:]
+    private var generations: [UUID: UUID] = [:]
+    private weak var mediaLibrary: MediaLibrary?
+    private let fm = FileManager.default
+    private let base: URL
+    private let journalFile: URL
+    private let secretService = "org.vidrane.transfer.url"
+    private var lastSaved = Date.distantPast
 
-    private init() {}
+    private init() {
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        base = support.appendingPathComponent("TransferParts", isDirectory: true)
+        journalFile = support.appendingPathComponent("transfer-queue-v2.json")
+        try? fm.createDirectory(at: base, withIntermediateDirectories: true)
+
+        if let bytes = try? Data(contentsOf: journalFile),
+           let recovered = try? JSONDecoder().decode([TransferJournalEntry].self, from: bytes) {
+            for var item in recovered {
+                if item.record.status == .running {
+                    item.record.status = .waiting
+                    item.autoPlay = false
+                }
+                journal[item.record.id] = item
+                records.append(item.record)
+            }
+        }
+    }
+
+    /// AppRootView calls this after launching. The journal may have been
+    /// restored before its MediaLibrary environment object existed.
+    func attach(library: MediaLibrary) {
+        mediaLibrary = library
+        pump()
+    }
 
     func isDownloading(_ url: URL) -> Bool {
-        contexts.values.contains {
-            $0.request.url == url && $0.task?.state == .running
+        records.contains { record in
+            guard record.status == .running || record.status == .waiting,
+                  let job = journal[record.id],
+                  job.kind == .https || job.kind == .webdav,
+                  let stored = try? secret(for: record.id) else { return false }
+            return stored == url.absoluteString
         }
     }
 
     func isDownloadingSFTP(server: SFTPServer, entry: SFTPEntry) -> Bool {
-        sftpContexts.contains { id, context in
-            context.server.id == server.id && context.entry.path == entry.path &&
-                records.first(where: { $0.id == id })?.status == .running
+        records.contains { record in
+            guard let job = journal[record.id] else { return false }
+            return (record.status == .running || record.status == .waiting) &&
+                job.kind == .sftp && job.serverID == server.id &&
+                job.remotePath == entry.path
         }
-    }
-
-    func enqueueSFTP(
-        server: SFTPServer, entry: SFTPEntry,
-        playWhenFinished: Bool = false,
-        library: MediaLibrary
-    ) {
-        guard !entry.isDirectory,
-              !isDownloadingSFTP(server: server, entry: entry) else { return }
-        let id = UUID()
-        sftpContexts[id] = SFTPDownloadContext(
-            server: server, entry: entry,
-            playWhenFinished: playWhenFinished, library: library
-        )
-        records.insert(DownloadRecord(
-            id: id, name: entry.name, source: "SFTP",
-            status: .running, expectedBytes: entry.size
-        ), at: 0)
-        startSFTP(id)
     }
 
     func enqueue(
         url: URL, filename: String,
         source: String = "HTTPS",
+        serverID: UUID? = nil,
         authorization: String? = nil,
         playWhenFinished: Bool = false,
         library: MediaLibrary
     ) throws {
-        guard url.scheme?.lowercased() == "https",
-              url.host != nil, url.user == nil, url.password == nil else {
-            throw WebDAVError.invalidURL
+        guard url.scheme?.lowercased() == "https", url.host != nil,
+              url.user == nil, url.password == nil else { throw WebDAVError.invalidURL }
+        let kind: TransferKind = source == "WebDAV" ? .webdav : .https
+        guard kind != .webdav || serverID != nil else {
+            throw WebDAVError.missingCredential
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 120
-        if let authorization {
-            request.setValue(authorization, forHTTPHeaderField: "Authorization")
-        }
-        let name = (filename as NSString).lastPathComponent
-        let displayName = name.isEmpty ? "download" : name
         let id = UUID()
-        contexts[id] = DownloadContext(
-            request: request, filename: displayName,
-            playWhenFinished: playWhenFinished, library: library
+        try saveSecret(url.absoluteString, for: id)
+        let name = (filename as NSString).lastPathComponent
+        let record = DownloadRecord(
+            id: id, name: name.isEmpty ? "download" : name,
+            source: kind == .webdav ? "WebDAV" : "HTTPS", status: .waiting
         )
-        records.insert(
-            DownloadRecord(id: id, name: displayName, source: source, status: .running),
-            at: 0
+        journal[id] = TransferJournalEntry(
+            record: record, kind: kind, serverID: serverID,
+            remotePath: nil, etag: nil, autoPlay: playWhenFinished
         )
-        start(id)
+        records.insert(record, at: 0)
+        attach(library: library)
+        persist()
+        pump()
+    }
+
+    func enqueueSFTP(
+        server: SFTPServer, entry: SFTPEntry,
+        playWhenFinished: Bool = false, library: MediaLibrary
+    ) {
+        guard !entry.isDirectory, !isDownloadingSFTP(server: server, entry: entry)
+        else { return }
+        insertJob(
+            kind: .sftp, serverID: server.id,
+            path: entry.path, name: entry.name,
+            size: entry.size, play: playWhenFinished,
+            library: library
+        )
+    }
+
+    func enqueueSMB(
+        server: SMBServer, entry: SMBEntry,
+        playWhenFinished: Bool = false, library: MediaLibrary
+    ) {
+        guard !entry.isDirectory else { return }
+        if records.contains(where: {
+            guard let item = journal[$0.id] else { return false }
+            return ($0.status == .running || $0.status == .waiting) &&
+                item.kind == .smb && item.serverID == server.id &&
+                item.remotePath == entry.path
+        }) { return }
+        insertJob(
+            kind: .smb, serverID: server.id,
+            path: entry.path, name: entry.name,
+            size: entry.size, play: playWhenFinished,
+            library: library
+        )
+    }
+
+    private func insertJob(
+        kind: TransferKind, serverID: UUID, path: String,
+        name: String, size: Int64?, play: Bool,
+        library: MediaLibrary
+    ) {
+        let id = UUID()
+        let record = DownloadRecord(
+            id: id, name: name, source: kind == .smb ? "SMB" : "SFTP",
+            status: .waiting, expectedBytes: size
+        )
+        journal[id] = TransferJournalEntry(
+            record: record, kind: kind, serverID: serverID,
+            remotePath: path, autoPlay: play
+        )
+        records.insert(record, at: 0)
+        attach(library: library)
+        persist()
+        pump()
     }
 
     func cancel(_ id: UUID) {
-        guard let row = index(id), records[row].status == .running else { return }
-        if let context = contexts[id] {
-            context.task?.cancel()
-        } else if let context = sftpContexts[id] {
-            context.task?.cancel()
-        } else {
-            return
-        }
+        guard let row = index(id),
+              records[row].status == .running || records[row].status == .waiting
+        else { return }
         records[row].status = .cancelled
+        journal[id]?.record = records[row]
+        work[id]?.cancel()
+        persist()
     }
 
     func retry(_ id: UUID) {
         guard let row = index(id),
-              contexts[id] != nil || sftpContexts[id] != nil,
-              records[row].status == .failed || records[row].status == .cancelled else {
-            return
-        }
-        records[row].status = .running
-        records[row].receivedBytes = 0
-        records[row].expectedBytes = nil
+              records[row].status == .failed || records[row].status == .cancelled
+        else { return }
+        records[row].status = .waiting
         records[row].error = nil
-        if contexts[id] != nil { start(id) }
-        else { startSFTP(id) }
+        journal[id]?.record = records[row]
+        persist()
+        pump()
     }
 
     func remove(_ id: UUID) {
-        contexts[id]?.task?.cancel()
-        sftpContexts[id]?.task?.cancel()
-        contexts.removeValue(forKey: id)
-        sftpContexts.removeValue(forKey: id)
+        work[id]?.cancel()
+        work.removeValue(forKey: id)
+        generations.removeValue(forKey: id)
+        journal.removeValue(forKey: id)
         records.removeAll { $0.id == id }
+        try? fm.removeItem(at: partURL(id))
+        deleteSecret(for: id)
+        persist()
+        pump()
     }
 
     private func index(_ id: UUID) -> Int? {
-        records.firstIndex { $0.id == id }
+        records.firstIndex(where: { $0.id == id })
     }
 
-    private func start(_ id: UUID) {
-        guard let context = contexts[id] else { return }
-        let task = session.downloadTask(with: context.request)
-        task.taskDescription = id.uuidString
-        context.task = task
-        task.resume()
+    private func partURL(_ id: UUID) -> URL {
+        base.appendingPathComponent(id.uuidString + ".part")
     }
 
-    private func startSFTP(_ id: UUID) {
-        guard let context = sftpContexts[id] else { return }
-        let generation = UUID()
-        context.generation = generation
-        context.task = Task { [weak self] in
-            guard let self else { return }
-            await self.performSFTP(id, generation: generation)
+    private func pump() {
+        guard mediaLibrary != nil else { return }
+        let active = work.values.count
+        guard active < 2 else { return }
+        for row in records where row.status == .waiting {
+            if work.count >= 2 { break }
+            let id = row.id
+            guard work[id] == nil, journal[id] != nil else { continue }
+            let generation = UUID()
+            generations[id] = generation
+            if let index = index(id) {
+                records[index].status = .running
+                journal[id]?.record = records[index]
+            }
+            work[id] = Task { [weak self] in
+                guard let self else { return }
+                await self.perform(id, generation: generation)
+            }
         }
+        persist()
     }
 
-    private func sftpProgress(
-        _ id: UUID, generation: UUID, bytes: Int64, total: Int64?
-    ) {
-        guard let row = index(id), records[row].status == .running,
-              sftpContexts[id]?.generation == generation else { return }
+    private func progress(_ id: UUID, generation: UUID,
+                          bytes: Int64, expected: Int64?) {
+        guard generations[id] == generation, let row = index(id),
+              records[row].status == .running else { return }
         records[row].receivedBytes = bytes
-        records[row].expectedBytes = total
+        if let expected, expected > 0 { records[row].expectedBytes = expected }
+        journal[id]?.record = records[row]
+        persist(throttled: true)
     }
 
-    private func performSFTP(_ id: UUID, generation: UUID) async {
-        guard let context = sftpContexts[id] else { return }
-        var connection: SFTPConnection?
-        var temporary: URL?
+    private func perform(_ id: UUID, generation: UUID) async {
         do {
-            let password = try SFTPStore.shared.password(for: context.server)
+            guard let entry = journal[id] else { return }
+            let length: Int64
+            switch entry.kind {
+            case .https, .webdav:
+                length = try await downloadHTTP(id, generation: generation, entry: entry)
+            case .sftp:
+                length = try await downloadSFTP(id, generation: generation, entry: entry)
+            case .smb:
+                length = try await downloadSMB(id, generation: generation, entry: entry)
+            }
             try Task.checkCancellation()
-            let active = try await SFTPConnection.connect(
-                server: context.server, password: password
-            )
-            connection = active
-            temporary = try await active.download(context.entry) { [weak self] bytes, total in
-                Task { @MainActor [weak self] in
-                    self?.sftpProgress(
-                        id, generation: generation, bytes: bytes, total: total
-                    )
-                }
-            }
-            await active.close()
-            connection = nil
-            try Task.checkCancellation()
-            guard let row = index(id), context.generation == generation,
-                  records[row].status == .running else {
-                if let temporary { try? FileManager.default.removeItem(at: temporary) }
-                return
-            }
-            guard let temporary, let library = context.library else {
-                throw SFTPError.incompleteTransfer
-            }
-            let local = try library.importRemoteFile(
-                at: temporary, filename: context.entry.name
-            )
-            self.sftpProgress(
-                id, generation: generation,
-                bytes: local.bytes, total: local.bytes
+            guard generations[id] == generation,
+                  let row = index(id), records[row].status == .running,
+                  let library = mediaLibrary else { throw CancellationError() }
+
+            let item = try library.importRemoteFile(
+                at: partURL(id), filename: entry.record.name
             )
             records[row].status = .finished
-            context.task = nil
-            sftpContexts.removeValue(forKey: id)
-            if context.playWhenFinished && local.kind.playable {
-                library.play(local)
-            }
+            records[row].receivedBytes = length
+            records[row].expectedBytes = length
+            journal[id]?.record = records[row]
+            journal[id]?.autoPlay = false
+            deleteSecret(for: id)
+            if entry.autoPlay && item.kind.playable { library.play(item) }
         } catch {
-            if let connection { await connection.close() }
-            if let temporary { try? FileManager.default.removeItem(at: temporary) }
-            guard let row = index(id), context.generation == generation,
-                  records[row].status == .running else { return }
-            records[row].status = Task.isCancelled ? .cancelled : .failed
-            records[row].error = Task.isCancelled
-                ? nil : "Не удалось скачать файл через SFTP: \(error.localizedDescription)"
-            context.task = nil
-        }
-    }
-
-    func progress(taskID: String?, taskIdentifier: Int, bytes: Int64, total: Int64) {
-        guard let taskID, let id = UUID(uuidString: taskID),
-              let row = index(id), records[row].status == .running,
-              contexts[id]?.task?.taskIdentifier == taskIdentifier else { return }
-        records[row].receivedBytes = bytes
-        records[row].expectedBytes = total > 0 ? total : nil
-    }
-
-    func completed(taskID: String?, taskIdentifier: Int, temporary: URL?, error: String?) {
-        guard let taskID, let id = UUID(uuidString: taskID),
-              let row = index(id), let context = contexts[id],
-              records[row].status == .running,
-              context.task?.taskIdentifier == taskIdentifier else {
-            if let temporary { try? FileManager.default.removeItem(at: temporary) }
-            return
-        }
-        context.task = nil
-        if let error {
-            records[row].status = .failed
-            records[row].error = error
-            return
-        }
-        guard let temporary, let library = context.library else {
-            records[row].status = .failed
-            records[row].error = "Файл не был получен."
-            return
-        }
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        do {
-            let file = try library.importRemoteFile(at: temporary, filename: context.filename)
-            records[row].status = .finished
-            records[row].receivedBytes = file.bytes
-            records[row].expectedBytes = file.bytes
-            if context.playWhenFinished && file.kind.playable {
-                library.play(file)
+            guard generations[id] == generation,
+                  let row = index(id) else { return }
+            if records[row].status == .running {
+                records[row].status = error is CancellationError ? .cancelled : .failed
+                records[row].error = error is CancellationError
+                    ? nil : "Передача не завершена: \(error.localizedDescription)"
+                journal[id]?.record = records[row]
             }
-            // Do not retain HTTP Authorization headers longer than necessary.
-            contexts.removeValue(forKey: id)
-        } catch {
-            records[row].status = .failed
-            records[row].error = "Не удалось импортировать скачанный файл."
+        }
+        if generations[id] == generation {
+            work.removeValue(forKey: id)
+            generations.removeValue(forKey: id)
+            persist()
+            pump()
         }
     }
 
-    func failed(taskID: String?, taskIdentifier: Int, error: Error) {
-        guard let taskID, let id = UUID(uuidString: taskID),
-              let row = index(id), records[row].status == .running,
-              contexts[id]?.task?.taskIdentifier == taskIdentifier else { return }
-        records[row].status = .failed
-        records[row].error = (error as? URLError)?.code == .cancelled
-            ? "Соединение прервано." : "Ошибка сети: \(error.localizedDescription)"
-        contexts[id]?.task = nil
+    private func actualPartSize(_ id: UUID) -> Int64 {
+        let size = (try? fm.attributesOfItem(atPath: partURL(id).path)[.size] as? NSNumber)?.int64Value
+        return max(0, size ?? 0)
+    }
+
+    /// If resuming from partial data, compare its final bytes to the
+    /// same offset on the remote server to prevent joining mismatched media.
+    private func verifiedOffset(
+        _ id: UUID, expected: Int64, fetch: (Int64, Int) async throws -> Data
+    ) async throws -> Int64 {
+        let current = actualPartSize(id)
+        guard current > 0 else { return 0 }
+        guard current <= expected, expected > 0 else {
+            try? fm.removeItem(at: partURL(id))
+            return 0
+        }
+        let count = Int(min(4096, current))
+        let file = try FileHandle(forReadingFrom: partURL(id))
+        defer { try? file.close() }
+        try file.seek(toOffset: UInt64(current - Int64(count)))
+        let local = try file.read(upToCount: count) ?? Data()
+        let remote = try await fetch(current - Int64(count), count)
+        if remote != local {
+            try? fm.removeItem(at: partURL(id))
+            return 0
+        }
+        return current
+    }
+
+    private func prepareOutput(_ id: UUID, offset: Int64) throws -> FileHandle {
+        if !fm.fileExists(atPath: partURL(id).path) {
+            guard fm.createFile(atPath: partURL(id).path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+        }
+        let file = try FileHandle(forWritingTo: partURL(id))
+        try file.truncate(atOffset: UInt64(offset))
+        try file.seek(toOffset: UInt64(offset))
+        return file
+    }
+
+    private func downloadSFTP(
+        _ id: UUID, generation: UUID, entry: TransferJournalEntry
+    ) async throws -> Int64 {
+        guard let serverID = entry.serverID,
+              let server = SFTPStore.shared.servers.first(where: { $0.id == serverID }),
+              let path = entry.remotePath else { throw SFTPError.invalidServer }
+        let secret = try SFTPStore.shared.password(for: server)
+        let client = try await SFTPConnection.connect(server: server, password: secret)
+        let remote = SFTPEntry(name: entry.record.name, path: path, isDirectory: false, size: nil)
+        let handle: SFTPReadHandle
+        do { handle = try await client.openReadStream(remote) }
+        catch { await client.close(); throw error }
+        defer { Task { await handle.close() } }
+
+        let length = handle.size
+        let offset = try await verifiedOffset(id, expected: length) {
+            try await handle.read(offset: $0, count: $1)
+        }
+        let output = try prepareOutput(id, offset: offset)
+        defer { try? output.close() }
+        var written = offset
+        progress(id, generation: generation, bytes: written, expected: length)
+        while written < length {
+            try Task.checkCancellation()
+            let count = Int(min(64 * 1024, length - written))
+            let data = try await handle.read(offset: written, count: count)
+            try output.write(contentsOf: data)
+            written += Int64(data.count)
+            progress(id, generation: generation, bytes: written, expected: length)
+        }
+        return written
+    }
+
+    private func downloadSMB(
+        _ id: UUID, generation: UUID, entry: TransferJournalEntry
+    ) async throws -> Int64 {
+        guard let serverID = entry.serverID,
+              let server = SMBStore.shared.servers.first(where: { $0.id == serverID }),
+              let path = entry.remotePath else { throw SMBError.invalidConnection }
+        let secret = try SMBStore.shared.password(for: server)
+        let client = try await SMBConnection.connect(server: server, password: secret)
+        defer { Task { await client.close() } }
+        let remote = SMBEntry(name: entry.record.name, path: path, isDirectory: false, size: nil)
+        let length = try await client.fileSize(remote)
+        let offset = try await verifiedOffset(id, expected: length) {
+            try await client.read(remote, offset: $0, count: $1)
+        }
+        let output = try prepareOutput(id, offset: offset)
+        defer { try? output.close() }
+        var written = offset
+        progress(id, generation: generation, bytes: written, expected: length)
+        while written < length {
+            try Task.checkCancellation()
+            let count = Int(min(128 * 1024, length - written))
+            let data = try await client.read(remote, offset: written, count: count)
+            try output.write(contentsOf: data)
+            written += Int64(data.count)
+            progress(id, generation: generation, bytes: written, expected: length)
+        }
+        return written
+    }
+
+    private func downloadHTTP(
+        _ id: UUID, generation: UUID, entry: TransferJournalEntry
+    ) async throws -> Int64 {
+        let address = try secret(for: id)
+        guard let url = URL(string: address), url.scheme == "https",
+              url.user == nil, url.password == nil else {
+            throw WebDAVError.invalidURL
+        }
+
+        var auth: String?
+        if entry.kind == .webdav {
+            guard let serverID = entry.serverID,
+                  let server = WebDAVStore.shared.servers.first(where: { $0.id == serverID }),
+                  let root = server.root,
+                  WebDAVURLPolicy.isWithinRoot(url, root: root) else {
+                throw WebDAVError.missingCredential
+            }
+            auth = try WebDAVStore.shared.access(server).authorizationHeader
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        let session = URLSession(
+            configuration: configuration,
+            delegate: TransferRedirectBlocker(),
+            delegateQueue: nil
+        )
+        defer { session.invalidateAndCancel() }
+
+        var offset = actualPartSize(id)
+        // Without a stable ETag we do not assume an old HTTP partial is
+        // still the same object after a process restart.
+        if offset > 0 && entry.etag == nil {
+            try? fm.removeItem(at: partURL(id))
+            offset = 0
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 120
+        request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
+        if let auth { request.setValue(auth, forHTTPHeaderField: "Authorization") }
+        if offset > 0, let etag = entry.etag {
+            request.setValue(etag, forHTTPHeaderField: "If-Range")
+        }
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let http = response as? HTTPURLResponse,
+              http.statusCode == 200 || http.statusCode == 206 else {
+            throw WebDAVError.invalidResponse
+        }
+
+        var expected: Int64?
+        if http.statusCode == 206 {
+            guard let header = http.value(forHTTPHeaderField: "Content-Range"),
+                  let range = Self.parseRange(header, offset: offset) else {
+                throw WebDAVStreamError.invalidRange
+            }
+            expected = range
+            if offset > 0, let previous = entry.etag,
+               let new = http.value(forHTTPHeaderField: "ETag"),
+               new != previous {
+                throw WebDAVStreamError.invalidResponse
+            }
+        } else {
+            // Server ignored Range or the object changed: re-download from
+            // byte zero without mixing old and new file contents.
+            offset = 0
+            if let len = http.value(forHTTPHeaderField: "Content-Length") {
+                expected = Int64(len)
+            }
+        }
+
+        if let tag = http.value(forHTTPHeaderField: "ETag"),
+           !tag.hasPrefix("W/") && !tag.contains("\n") {
+            journal[id]?.etag = tag
+        } else if offset == 0 {
+            journal[id]?.etag = nil
+        }
+        let output = try prepareOutput(id, offset: offset)
+        defer { try? output.close() }
+        var written = offset
+        var batch = Data()
+        batch.reserveCapacity(64 * 1024)
+
+        progress(id, generation: generation, bytes: written, expected: expected)
+        for try await byte in bytes {
+            if batch.count == 64 * 1024 {
+                try Task.checkCancellation()
+                try output.write(contentsOf: batch)
+                written += Int64(batch.count)
+                batch.removeAll(keepingCapacity: true)
+                progress(id, generation: generation, bytes: written, expected: expected)
+            }
+            batch.append(byte)
+        }
+        try Task.checkCancellation()
+        if !batch.isEmpty {
+            try output.write(contentsOf: batch)
+            written += Int64(batch.count)
+        }
+        guard written > 0, expected == nil || expected == written else {
+            throw WebDAVStreamError.invalidResponse
+        }
+        progress(id, generation: generation, bytes: written, expected: written)
+        return written
+    }
+
+    private static func parseRange(_ header: String, offset: Int64) -> Int64? {
+        guard header.hasPrefix("bytes "), header.count < 128 else { return nil }
+        let pair = header.dropFirst(6).split(
+            separator: "/", omittingEmptySubsequences: false
+        )
+        guard pair.count == 2, let total = UInt64(pair[1]),
+              total <= UInt64(Int64.max) else { return nil }
+        let ends = pair[0].split(separator: "-", omittingEmptySubsequences: false)
+        guard ends.count == 2,
+              let end = UInt64(ends[1]) else { return nil }
+        return header.withCString {
+            vidrane_content_range_total(
+                $0, UInt64(offset), end, total
+            ) == total ? Int64(total) : nil
+        }
+    }
+
+    private func persist(throttled: Bool = false) {
+        if throttled && Date().timeIntervalSince(lastSaved) < 1.5 { return }
+        lastSaved = Date()
+        let snapshot = records.compactMap { journal[$0.id] }
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        try? data.write(to: journalFile, options: [.atomic, .completeFileProtectionUnlessOpen])
+    }
+
+    private func saveSecret(_ value: String, for id: UUID) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: secretService,
+            kSecAttrAccount as String: id.uuidString,
+            kSecValueData as String: Data(value.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw NSError(
+                domain: NSOSStatusErrorDomain, code: Int(status),
+                userInfo: [NSLocalizedDescriptionKey: "Не удалось защитить URL в Keychain."]
+            )
+        }
+    }
+
+    private func secret(for id: UUID) throws -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: secretService,
+            kSecAttrAccount as String: id.uuidString,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let bytes = result as? Data,
+              let value = String(data: bytes, encoding: .utf8) else {
+            throw WebDAVError.missingCredential
+        }
+        return value
+    }
+
+    private func deleteSecret(for id: UUID) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: secretService,
+            kSecAttrAccount as String: id.uuidString
+        ]
+        SecItemDelete(query as CFDictionary)
     }
 }
