@@ -28,6 +28,8 @@ struct PlaybackView: View {
     @State private var waitingToResume = false
     @State private var seekingToResume = false
     @State private var lastCheckpointAt: Date = .distantPast
+    @State private var audioGroup: AVMediaSelectionGroup?
+    @State private var subtitleGroup: AVMediaSelectionGroup?
 
     private let progressTicker = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
 
@@ -203,6 +205,8 @@ struct PlaybackView: View {
                 }
                 .accessibilityLabel("Скорость воспроизведения")
 
+                mediaTracksMenu
+
                 Menu {
                     ForEach(VideoScaling.allCases) { scaling in
                         Button {
@@ -235,6 +239,85 @@ struct PlaybackView: View {
         }
     }
 
+    @ViewBuilder
+    private var mediaTracksMenu: some View {
+        Menu {
+            Section("Аудиодорожка") {
+                if let group = audioGroup {
+                    ForEach(group.options.indices, id: \.self) { index in
+                        let option = group.options[index]
+                        Button {
+                            selectTrack(option, in: group)
+                        } label: {
+                            if player.currentItem?.currentMediaSelection.selectedMediaOption(in: group) === option {
+                                Label(option.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayName)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Нет альтернативных дорожек")
+                }
+            }
+            Section("Встроенные субтитры") {
+                if let group = subtitleGroup {
+                    Button {
+                        selectTrack(nil, in: group)
+                    } label: {
+                        if player.currentItem?.currentMediaSelection.selectedMediaOption(in: group) == nil {
+                            Label("Выключены", systemImage: "checkmark")
+                        } else {
+                            Text("Выключены")
+                        }
+                    }
+                    ForEach(group.options.indices, id: \.self) { index in
+                        let option = group.options[index]
+                        Button {
+                            selectTrack(option, in: group)
+                        } label: {
+                            if player.currentItem?.currentMediaSelection.selectedMediaOption(in: group) === option {
+                                Label(option.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(option.displayName)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Нет встроенных субтитров")
+                }
+            }
+        } label: {
+            Image(systemName: "captions.bubble")
+        }
+        .disabled(audioGroup == nil && subtitleGroup == nil)
+        .accessibilityLabel("Дорожки и субтитры")
+    }
+
+    private func selectTrack(
+        _ option: AVMediaSelectionOption?,
+        in group: AVMediaSelectionGroup
+    ) {
+        // Manual selection overrides the user's system language preferences
+        // for this playback session only.
+        player.appliesMediaSelectionCriteriaAutomatically = false
+        player.currentItem?.select(option, in: group)
+    }
+
+    private func loadTracks(for item: AVPlayerItem) {
+        audioGroup = nil
+        subtitleGroup = nil
+        Task { @MainActor in
+            // Async loading is required for network/HLS assets; the player
+            // may have changed while the selection groups are loading.
+            let audio = try? await item.asset.loadMediaSelectionGroup(for: .audible)
+            let subtitles = try? await item.asset.loadMediaSelectionGroup(for: .legible)
+            guard player.currentItem === item else { return }
+            audioGroup = audio
+            subtitleGroup = subtitles
+        }
+    }
+
     private func start() {
         selectedPresentation = PlayerPresentation(rawValue: playerPresentation) ?? .vidrane
         let saved = resumePlayback ? watchHistory.checkpoint(for: request.url) : nil
@@ -243,7 +326,9 @@ struct PlaybackView: View {
         waitingToResume = pendingResume > 0
         seekingToResume = false
         lastCheckpointAt = Date()
-        player.replaceCurrentItem(with: AVPlayerItem(url: request.url))
+        let item = AVPlayerItem(url: request.url)
+        player.replaceCurrentItem(with: item)
+        loadTracks(for: item)
         player.play()
         if playbackRate != 1 { player.rate = Float(playbackRate) }
         UIApplication.shared.isIdleTimerDisabled = keepScreenOn
