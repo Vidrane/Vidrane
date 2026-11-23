@@ -99,4 +99,20 @@ mod tests {
         assert_eq!(vidrane_media_kind(std::ptr::null()), 0);
         assert_eq!(vidrane_api_version(), 1);
     }
+
+    #[test]
+    fn subtitle_ffi_roundtrip_and_deallocation() {
+        let input = b"1\n00:00:01,000 --> 00:00:02,500\nHello\n";
+        let result = unsafe { vidrane_subtitles_parse_json(input.as_ptr(), input.len()) };
+        assert!(!result.is_null());
+        let json = unsafe { CStr::from_ptr(result) }
+            .to_str()
+            .expect("valid UTF-8 JSON");
+        assert!(json.contains("\"text\":\"Hello\""));
+        unsafe { vidrane_subtitles_free_json(result) };
+        assert!(unsafe { vidrane_subtitles_parse_json(std::ptr::null(), 10) }.is_null());
+        assert_eq!(vidrane_choose_decoder(0, true, false), 1);
+        assert_eq!(vidrane_choose_decoder(2, true, false), 0);
+        assert_eq!(vidrane_choose_decoder(0, false, true), 2);
+    }
 }

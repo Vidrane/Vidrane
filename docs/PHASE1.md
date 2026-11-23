@@ -1,60 +1,34 @@
-# Phase 1 status (iOS-first)
+# Vidrane — development status
 
-## Implemented
+Implemented:
+- Rust core for format classification, playlists, downloads state policy,
+  playback resume, provider registry, backend selection policy and UTF-8
+  SRT/WebVTT subtitle parsing with unit tests.
+- C ABI to native frontends, including subtitle JSON allocation/free.
+- Six-tab iOS interface, local file import, search, sorting, rename, share,
+  delete and media information.
+- Vidrane player controls by default; optional Apple controls using the
+  same AVPlayer. Session-only player UI switching.
+- Speed, seek gestures, scale, native PiP on supported devices, saved
+  watch position and Continue Watching.
+- Embedded AVFoundation audio and subtitle track selection where available.
+- External SRT/VTT subtitles via sidecar discovery or Files picker.
+  Synchronised text overlay and user-configurable subtitle typography.
+- AVFoundation playback failure reporting; simple HTTPS playback/downloads;
+  Playlists, WebKit browser and user settings.
+- Personal and Developer iOS unsigned IPA targets using the same source.
 
-- Rust core and ABI plus unit-tested media classification, playlist rules,
-  transfer state machine and playback-resume policy.
-- Six-tab SwiftUI application; local file import, search, filters, sorting,
-  rename, share, deletion and media information.
-- Two playback presentations using a single AVPlayer and AVFoundation engine.
-  Vidrane controls are the default; Apple system controls are optional.
-- In-player presentation switching affects that session only. The setting
-  selects the default for later sessions.
-- Custom Vidrane controls: pause/play, seek bar, skip 10 seconds, speed,
-  fit/fill scaling, double-tap to seek on the left/right half of the video.
-- AVFoundation media selection menus for **embedded** audio and subtitle tracks
-  when those groups are exposed by the asset.
-- Local watch-history checkpoints with automatic restore, Continue Watching
-  library section, and history cleanup on rename/deletion.
-- Watch history can be disabled (auto-resume) or cleared in Settings. Persisted
-  data stays in the iOS application sandbox; no account is required.
-- Playlists, direct HTTPS streams/downloads, a WebKit browser and baseline
-  persistent settings.
-- Personal and Developer signing targets built from the **same code**; unsigned
-  IPA artifacts via GitHub Actions.
+Not implemented:
+- Actual libmpv/FFmpeg codec backend, Dolby/DTS/HDR features beyond what
+  AVFoundation provides, or automatic codec failover. See ENGINE.md.
+- Advanced styled/bitmap subtitles, system PiP external captions. See
+  SUBTITLES.md.
+- SMB/SFTP/FTP/WebDAV/NFS/DLNA network browsing.
+- Persistent background transfers with reliable resume and cancellation.
+- Full nPlayer Plus parity; Android and desktop frontends.
 
-## Compatibility and limitations
-
-- The player still depends on AVFoundation for decoding in both UI modes.
-  A filename being recognized does not prove it is playable by Apple's codecs.
-- Both Vidrane's custom presentation and Apple's system presentation expose
-  native Picture-in-Picture on compatible devices. The Vidrane mode uses
-  AVPictureInPictureController with its AVPlayerLayer; actual PiP transitions
-  need physical-device validation.
-- Embedded media selection depends on the asset. External ASS/SRT subtitles,
-  font rendering, codec fallback and audio DSP are not yet implemented.
-- Resume history is currently keyed to unique *imported local filenames*.
-  Network streams are intentionally excluded. Almost-finished media is reset.
-- Background downloading is not persistent or resumable yet.
-- Network file providers (SMB/SFTP/FTP/WebDAV/NFS/DLNA) are planned and not
-  represented as functional in the interface.
-
-## Validation
-
-- [x] Rust tests and release builds have run successfully on GitHub Actions.
-- [x] Both unsigned iOS target builds completed on earlier phase-one commits.
-- [ ] Confirm latest SwiftUI playback/selection changes on macOS CI.
-- [ ] Run manual iPhone tests for media formats, playback controls,
-  restore, subtitle options, orientation, PiP and interrupted downloads.
-- [ ] Add dedicated UI/device tests once a stable physical test setup exists.
-
-## Next milestones
-
-1. Pluggable FFmpeg/libmpv-backed decoder with per-format diagnostics.
-2. Virtual filesystem for network providers and persistent connections.
-3. Advanced subtitles, media metadata and cover art.
-4. Download manager with progress, cancellation, retry and resume.
-5. Other-platform frontends built over shared Rust services.
-
-Vidrane remains one completely free and open-source application; the Apple
-signing profiles are technical deployment profiles, not feature tiers.
+Validation:
+- Rust CI checks formatting, unit tests and release build.
+- macOS GitHub Actions builds two unsigned iOS app variants.
+- Neither unsigned IPA can be installed without suitable code signing.
+- Physical-device testing of decoder, PiP and subtitle behavior is pending.

@@ -52,3 +52,7 @@ MIT. Independent source code; no proprietary nPlayer assets or code are included
 ## iOS player interface
 
 Vidrane's custom interface is the default for fresh installations. In Settings → Playback, users can select Apple's system video player as the default for future files; changing the interface from the playback screen affects only that viewing session. Both modes currently use the same AVFoundation engine, and system Picture-in-Picture is provided by the Apple control mode on supported devices.
+
+## Subtitle and decoder roadmap
+
+Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen captions on iOS. Playback still uses AVFoundation in both player interfaces; a Rust decoder routing policy is present, but libmpv/FFmpeg decoding is not integrated yet. See [subtitle support](docs/SUBTITLES.md) and [engine architecture](docs/ENGINE.md).
