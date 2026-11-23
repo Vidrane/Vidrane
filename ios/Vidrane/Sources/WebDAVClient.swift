@@ -18,6 +18,9 @@ enum WebDAVError: LocalizedError {
     case missingCredential
     case unsupportedLocation
     case fileTooLarge
+    case invalidName
+    case rootMutation
+    case targetExists
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +32,9 @@ enum WebDAVError: LocalizedError {
         case .missingCredential: return "Пароль подключения не найден. Создайте подключение заново."
         case .unsupportedLocation: return "Сервер вернул путь вне выбранного WebDAV-хранилища."
         case .fileTooLarge: return "Ответ каталога WebDAV слишком большой."
+        case .invalidName: return "Недопустимое имя файла или папки."
+        case .rootMutation: return "Корневую папку подключения нельзя переименовывать или удалять."
+        case .targetExists: return "Нельзя перезаписать существующий файл или папку."
         }
     }
 }
@@ -99,6 +105,25 @@ enum WebDAVURLPolicy {
               let candidate = URL(string: value, relativeTo: directory)?.absoluteURL,
               isWithinRoot(candidate, root: root) else {
             return nil
+        }
+        return candidate
+    }
+
+    static func child(named raw: String, in directory: URL, root: URL,
+                      isDirectory: Bool) throws -> URL {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != "..",
+              !name.hasPrefix("."),
+              !name.contains("/"), !name.contains("\\"),
+              !name.contains("?"), !name.contains("#"),
+              !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+              isWithinRoot(directory, root: root) else {
+            throw WebDAVError.invalidName
+        }
+        let candidate = directory.appendingPathComponent(name, isDirectory: isDirectory)
+        guard isWithinRoot(candidate, root: root),
+              isDirectChild(candidate, of: directory) else {
+            throw WebDAVError.unsupportedLocation
         }
         return candidate
     }
@@ -226,6 +251,92 @@ final class WebDAVClient {
             if $0.isDirectory != $1.isDirectory { return $0.isDirectory }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
+    }
+
+    private func mutation(_ request: URLRequest, allowed: Set<Int>) async throws {
+        let (_, response) = try await URLSession.shared.data(
+            for: request, delegate: WebDAVRedirectBlocker()
+        )
+        try check(response, allowed: allowed)
+    }
+
+    private func checkedSource(_ url: URL, access: WebDAVAccess) throws {
+        guard let root = access.server.root,
+              WebDAVURLPolicy.isWithinRoot(url, root: root) else {
+            throw WebDAVError.unsupportedLocation
+        }
+        let target = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let rootPath = root.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        if target == rootPath { throw WebDAVError.rootMutation }
+    }
+
+    /// MKCOL adds a directory with no filesystem changes outside the root.
+    func createDirectory(named name: String, in directory: URL,
+                         access: WebDAVAccess) async throws {
+        guard let root = access.server.root else { throw WebDAVError.invalidURL }
+        let destination = try WebDAVURLPolicy.child(
+            named: name, in: directory, root: root, isDirectory: true
+        )
+        let request = try request(destination, access: access, method: "MKCOL")
+        try await mutation(request, allowed: [201])
+    }
+
+    /// MOVE/COPY are performed by the server; they require DAV Level 2
+    /// support for some providers. Overwrite: F prevents silent replacement.
+    func transfer(_ source: WebDAVEntry, into directory: URL,
+                  named name: String, copy: Bool,
+                  access: WebDAVAccess) async throws {
+        try checkedSource(source.url, access: access)
+        guard let root = access.server.root else { throw WebDAVError.invalidURL }
+        let destination = try WebDAVURLPolicy.child(
+            named: name, in: directory, root: root,
+            isDirectory: source.isDirectory
+        )
+        if source.url == destination { throw WebDAVError.targetExists }
+        if source.isDirectory {
+            let origin = source.url.path.hasSuffix("/") ? source.url.path : source.url.path + "/"
+            if destination.path.hasPrefix(origin) {
+                throw WebDAVError.unsupportedLocation
+            }
+        }
+        var request = try request(
+            source.url, access: access, method: copy ? "COPY" : "MOVE"
+        )
+        request.setValue(destination.absoluteString, forHTTPHeaderField: "Destination")
+        request.setValue("F", forHTTPHeaderField: "Overwrite")
+        try await mutation(request, allowed: [201, 204])
+    }
+
+    /// DELETE is destructive and must only be initiated after UI confirmation.
+    func delete(_ entry: WebDAVEntry, access: WebDAVAccess) async throws {
+        try checkedSource(entry.url, access: access)
+        let request = try request(entry.url, access: access, method: "DELETE")
+        try await mutation(request, allowed: [200, 202, 204])
+    }
+
+    /// PUT with a precondition refuses overwriting an existing resource.
+    /// This is intentionally a foreground upload, not a persistent queue.
+    func upload(_ localURL: URL, in directory: URL,
+                access: WebDAVAccess) async throws {
+        guard localURL.isFileURL,
+              let root = access.server.root else { throw WebDAVError.invalidURL }
+        let destination = try WebDAVURLPolicy.child(
+            named: localURL.lastPathComponent,
+            in: directory, root: root, isDirectory: false
+        )
+        let scoped = localURL.startAccessingSecurityScopedResource()
+        defer { if scoped { localURL.stopAccessingSecurityScopedResource() } }
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isFolder),
+              !isFolder.boolValue else { throw WebDAVError.invalidResponse }
+
+        var request = try request(destination, access: access, method: "PUT")
+        request.setValue("*", forHTTPHeaderField: "If-None-Match")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (_, response) = try await URLSession.shared.upload(
+            for: request, fromFile: localURL, delegate: WebDAVRedirectBlocker()
+        )
+        try check(response, allowed: [201, 204])
     }
 
     /// Retrieves an authenticated WebDAV file to a temporary URL.
