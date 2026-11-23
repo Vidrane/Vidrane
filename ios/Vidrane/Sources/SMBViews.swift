@@ -121,6 +121,11 @@ struct SMBBrowserView: View {
                         }
                         if VidraneMediaKind(filename: entry.name).playable {
                             Button {
+                                Task { await playWithMPV(entry) }
+                            } label: {
+                                Label("Воспроизвести через libmpv", systemImage: "film")
+                            }
+                            Button {
                                 Task { await download(entry, play: true) }
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
@@ -223,6 +228,32 @@ struct SMBBrowserView: View {
             message = nil
         } catch {
             files = []
+            message = error.localizedDescription
+        }
+    }
+
+    private func playWithMPV(_ entry: SMBEntry) async {
+        guard !transferring.contains(entry.id) else { return }
+        transferring.insert(entry.id)
+        defer { transferring.remove(entry.id) }
+        do {
+            let password = try store.password(for: server)
+            let client = try await SMBConnection.connect(
+                server: server, password: password
+            )
+            let size: Int64
+            do {
+                size = try await client.fileSize(entry)
+            } catch {
+                await client.close()
+                throw error
+            }
+            let relay = try await MediaLoopbackRelay.start(
+                source: SMBRemoteBytes(client: client, entry: entry, length: size),
+                filename: entry.name
+            )
+            library.playRemoteMPV(relay, title: entry.name)
+        } catch {
             message = error.localizedDescription
         }
     }

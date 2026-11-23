@@ -207,6 +207,7 @@ final class VidraneMPVSession: ObservableObject {
         WatchHistory.shared.record(url: request.url, seconds: elapsed, duration: duration)
         core.stop()
         core.destroy()
+        request.remoteRelay?.stop()
         started = false
         UIApplication.shared.isIdleTimerDisabled = false
         playbackLoaded = false
@@ -285,8 +286,10 @@ struct VidraneMPVPlaybackView: View {
             HStack(spacing: 12) {
                 Text(request.title).lineLimit(1).font(.subheadline.weight(.medium))
                 Spacer()
-                Button("Apple / AVFoundation") { onUseNative() }
-                    .font(.caption)
+                if request.remoteRelay == nil {
+                    Button("Apple / AVFoundation") { onUseNative() }
+                        .font(.caption)
+                }
                 Button("Готово") { dismiss() }
                     .foregroundStyle(VidraneStyle.accent)
             }

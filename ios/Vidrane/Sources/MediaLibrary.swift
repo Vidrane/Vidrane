@@ -50,16 +50,19 @@ struct PlaybackRequest: Identifiable {
     let title: String
     let webDAVStream: WebDAVRangeStream?
     let sftpStream: SFTPRangeStream?
+    let remoteRelay: MediaLoopbackRelay?
 
     init(
         url: URL, title: String,
         webDAVStream: WebDAVRangeStream? = nil,
-        sftpStream: SFTPRangeStream? = nil
+        sftpStream: SFTPRangeStream? = nil,
+        remoteRelay: MediaLoopbackRelay? = nil
     ) {
         self.url = url
         self.title = title
         self.webDAVStream = webDAVStream
         self.sftpStream = sftpStream
+        self.remoteRelay = remoteRelay
     }
 }
 
@@ -366,6 +369,12 @@ final class MediaLibrary: ObservableObject {
             url: source.asset.url,
             title: title,
             sftpStream: source
+        )
+    }
+
+    func playRemoteMPV(_ relay: MediaLoopbackRelay, title: String) {
+        playback = PlaybackRequest(
+            url: relay.url, title: title, remoteRelay: relay
         )
     }
 

@@ -62,6 +62,7 @@ struct PlaybackHostView: View {
     private var libmpvSelected: Bool {
         // The authenticated DAV and SFTP streams are AVFoundation
         // resource-loader assets, not libmpv URLs.
+        if request.remoteRelay != nil { return true }
         if request.webDAVStream != nil || request.sftpStream != nil {
             return false
         }
@@ -86,7 +87,8 @@ struct PlaybackHostView: View {
             } else {
                 PlaybackView(
                     request: request,
-                    onTryLibmpv: request.webDAVStream == nil && request.sftpStream == nil
+                    onTryLibmpv: request.webDAVStream == nil &&
+                        request.sftpStream == nil && request.remoteRelay == nil
                         ? { overrideLibmpv = true } : nil
                 )
             }

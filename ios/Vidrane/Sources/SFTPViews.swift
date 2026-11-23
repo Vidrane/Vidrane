@@ -146,6 +146,11 @@ struct SFTPBrowserView: View {
                                 }
                             }
                             Button {
+                                Task { await playWithMPV(entry) }
+                            } label: {
+                                Label("Воспроизвести через libmpv", systemImage: "film")
+                            }
+                            Button {
                                 transfer(entry, play: true)
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
@@ -338,6 +343,32 @@ struct SFTPBrowserView: View {
             errorText = error.localizedDescription
         }
         mutating = false
+    }
+
+    private func playWithMPV(_ entry: SFTPEntry) async {
+        guard !streaming.contains(entry.id) else { return }
+        streaming.insert(entry.id)
+        defer { streaming.remove(entry.id) }
+        do {
+            let password = try sftp.password(for: server)
+            let connection = try await SFTPConnection.connect(
+                server: server, password: password
+            )
+            let handle: SFTPReadHandle
+            do {
+                handle = try await connection.openReadStream(entry)
+            } catch {
+                await connection.close()
+                throw error
+            }
+            let relay = try await MediaLoopbackRelay.start(
+                source: SFTPRemoteBytes(handle: handle),
+                filename: entry.name
+            )
+            library.playRemoteMPV(relay, title: entry.name)
+        } catch {
+            errorText = error.localizedDescription
+        }
     }
 
     private func playStream(_ entry: SFTPEntry) async {

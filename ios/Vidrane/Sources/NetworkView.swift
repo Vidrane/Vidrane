@@ -319,6 +319,11 @@ struct WebDAVFolderView: View {
                                 }
                             }
                             Button {
+                                Task { await playWithMPV(entry) }
+                            } label: {
+                                Label("Воспроизвести через libmpv", systemImage: "film")
+                            }
+                            Button {
                                 transfer(entry, play: true)
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
@@ -533,6 +538,24 @@ struct WebDAVFolderView: View {
                 try await WebDAVClient.shared.upload(url, in: directory, access: access)
             }
             await reload()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func playWithMPV(_ entry: WebDAVEntry) async {
+        guard !openingStream.contains(entry.url) else { return }
+        openingStream.insert(entry.url)
+        defer { openingStream.remove(entry.url) }
+        do {
+            let access = try webdav.access(server)
+            let source = try await WebDAVRemoteBytes.connect(
+                entry: entry, access: access
+            )
+            let relay = try await MediaLoopbackRelay.start(
+                source: source, filename: entry.name
+            )
+            library.playRemoteMPV(relay, title: entry.name)
         } catch {
             errorText = error.localizedDescription
         }
