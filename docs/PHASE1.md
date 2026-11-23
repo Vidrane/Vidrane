@@ -26,7 +26,8 @@ Personal and Developer are Apple signing profiles, not app editions.
 - WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
   MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads and native
   AVFoundation on-demand byte-range streaming for supported media.
-- Foreground HTTPS/WebDAV transfers with progress, cancellation and retry.
+- Unified foreground HTTPS/WebDAV/SFTP download queue with progress,
+  cancellation and retry; SFTP uploads have not yet joined this queue.
 - Main GitHub Actions generates unsigned Personal and Developer IPAs with
   identical libmpv and AVFoundation support.
 

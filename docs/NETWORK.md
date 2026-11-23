@@ -8,8 +8,11 @@ root-confined directory navigation, 32 KiB chunked downloads/uploads,
 remote directory creation, and deletion of files or empty folders.
 There is no insecure accept-any-host-key mode.
 
-SFTP transfers remain foreground operations outside the shared download
-queue. Native-compatible files can stream through AVAssetResourceLoader
+SFTP downloads now share the main foreground queue with HTTPS/WebDAV,
+including live progress, cancellation and retry. Passwords are read from
+Keychain for each attempt rather than stored in queue history. SFTP
+uploads remain outside the queue. Native-compatible files stream through
+AVAssetResourceLoader
 with bounded authenticated SSH reads and seeking, without a full download.
 MKV/libmpv SFTP streaming and durable resume are not yet implemented.
 See [SFTP security and usage](SFTP.md).

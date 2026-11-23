@@ -518,6 +518,7 @@ struct WebDAVFolderView: View {
             try transfers.enqueue(
                 url: entry.url,
                 filename: entry.name,
+                source: "WebDAV",
                 authorization: access.authorizationHeader,
                 playWhenFinished: play,
                 library: library

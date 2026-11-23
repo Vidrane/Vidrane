@@ -196,6 +196,7 @@ final class TransferCenter: ObservableObject {
 
     func enqueue(
         url: URL, filename: String,
+        source: String = "HTTPS",
         authorization: String? = nil,
         playWhenFinished: Bool = false,
         library: MediaLibrary
@@ -218,7 +219,7 @@ final class TransferCenter: ObservableObject {
             playWhenFinished: playWhenFinished, library: library
         )
         records.insert(
-            DownloadRecord(id: id, name: displayName, status: .running),
+            DownloadRecord(id: id, name: displayName, source: source, status: .running),
             at: 0
         )
         start(id)

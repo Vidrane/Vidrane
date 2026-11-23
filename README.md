@@ -27,7 +27,8 @@ libmpv/FFmpeg**. There is no extra premium, Lite or experimental IPA edition.
 - HTTPS WebDAV with Keychain-backed Basic auth, folder operations,
   remote file uploads, authenticated downloads and native-compatible
   byte-range streaming without full-file imports.
-- A foreground download queue with progress, cancellation and retries.
+- A shared HTTPS, WebDAV and SFTP foreground download queue with
+  progress, cancellation and retries.
 
 ## Architecture
 

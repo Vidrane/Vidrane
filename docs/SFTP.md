@@ -72,8 +72,10 @@ download and play. Network and physical-iPhone tests are still pending.
 - Remote removal of a directory is non-recursive (empty folders only),
   and the UI requires confirmation before any remote delete.
 - Private-key user authentication and passwordless login.
-- Progress, cancellation controls and durable resume in the shared
-  download queue. The current browser shows a busy spinner.
+- Durable resumable transfers and background URLSession-equivalent
+  persistence. Foreground SFTP downloads now share the main Downloads
+  queue with HTTP/WebDAV, live progress, cancellation and retry from zero.
+  SFTP uploads still use a busy indicator rather than the queue.
 - SMB/CIFS and the other network provider implementations.
 - Interoperability tests against real SSH servers and iPhone validation.
 
