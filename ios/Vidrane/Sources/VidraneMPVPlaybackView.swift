@@ -170,7 +170,7 @@ final class VidraneMPVSession: ObservableObject {
     }
 
     private func savePosition() {
-        guard started, !isPaused, duration >= 30 else { return }
+        guard started, duration >= 30 else { return }
         WatchHistory.shared.record(url: request.url, seconds: elapsed, duration: duration)
         lastSaved = Date()
     }
@@ -195,6 +195,8 @@ final class VidraneMPVSession: ObservableObject {
 /// The GPU render context must be detached before the libmpv core is freed.
 private struct MPVRenderSurface: UIViewRepresentable {
     let session: VidraneMPVSession
+
+    func makeCoordinator() -> VidraneMPVSession { session }
 
     func makeUIView(context: Context) -> UIView {
         do {
@@ -221,12 +223,12 @@ private struct MPVRenderSurface: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) {}
 
-    static func dismantleUIView(_ view: UIView, coordinator: ()) {
+    static func dismantleUIView(_ view: UIView, coordinator: VidraneMPVSession) {
         if let video = view as? MPVGLView {
             video.teardown()
         }
-        // The view's owner saves position on disappear. Full teardown
-        // is performed in the owner's stop handler, not while rendering.
+        // mpv_render_context_free MUST precede mpv_terminate_destroy.
+        coordinator.finish()
     }
 }
 
