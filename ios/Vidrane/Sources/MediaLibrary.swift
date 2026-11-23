@@ -49,11 +49,17 @@ struct PlaybackRequest: Identifiable {
     let url: URL
     let title: String
     let webDAVStream: WebDAVRangeStream?
+    let sftpStream: SFTPRangeStream?
 
-    init(url: URL, title: String, webDAVStream: WebDAVRangeStream? = nil) {
+    init(
+        url: URL, title: String,
+        webDAVStream: WebDAVRangeStream? = nil,
+        sftpStream: SFTPRangeStream? = nil
+    ) {
         self.url = url
         self.title = title
         self.webDAVStream = webDAVStream
+        self.sftpStream = sftpStream
     }
 }
 
@@ -350,6 +356,16 @@ final class MediaLibrary: ObservableObject {
             url: source.asset.url,
             title: title,
             webDAVStream: source
+        )
+    }
+
+    /// Play an SFTP media file using on-demand SSH range reads.
+    /// The synthetic AVURLAsset URL never carries server credentials.
+    func playSFTP(_ source: SFTPRangeStream, title: String) {
+        playback = PlaybackRequest(
+            url: source.asset.url,
+            title: title,
+            sftpStream: source
         )
     }
 

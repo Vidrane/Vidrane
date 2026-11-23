@@ -465,6 +465,8 @@ struct PlaybackView: View {
         let item: AVPlayerItem
         if let stream = request.webDAVStream {
             item = AVPlayerItem(asset: stream.asset)
+        } else if let stream = request.sftpStream {
+            item = AVPlayerItem(asset: stream.asset)
         } else {
             item = AVPlayerItem(url: request.url)
         }
@@ -481,6 +483,7 @@ struct PlaybackView: View {
         player.pause()
         player.replaceCurrentItem(with: nil)
         request.webDAVStream?.close()
+        request.sftpStream?.close()
         UIApplication.shared.isIdleTimerDisabled = false
     }
 

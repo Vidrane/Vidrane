@@ -89,6 +89,7 @@ struct SFTPBrowserView: View {
     @State private var files: [SFTPEntry] = []
     @State private var loading = false
     @State private var downloading: Set<String> = []
+    @State private var streaming: Set<String> = []
     @State private var errorText: String?
     @State private var mutating = false
     @State private var uploading = false
@@ -132,6 +133,18 @@ struct SFTPBrowserView: View {
                             Label("Скачать в медиатеку", systemImage: "arrow.down.circle")
                         }
                         if VidraneMediaKind(filename: entry.name).playable {
+                            if SFTPRangeStream.allowedExtensions.contains(
+                                (entry.name as NSString).pathExtension.lowercased()
+                            ) {
+                                Button {
+                                    Task { await playStream(entry) }
+                                } label: {
+                                    Label(
+                                        "Воспроизвести без скачивания",
+                                        systemImage: "play.rectangle"
+                                    )
+                                }
+                            }
                             Button {
                                 Task { await download(entry, play: true) }
                             } label: {
@@ -159,7 +172,7 @@ struct SFTPBrowserView: View {
                                 }
                             }
                             Spacer()
-                            if downloading.contains(entry.id) {
+                            if downloading.contains(entry.id) || streaming.contains(entry.id) {
                                 ProgressView()
                             } else {
                                 Image(systemName: "ellipsis.circle")
@@ -167,7 +180,7 @@ struct SFTPBrowserView: View {
                             }
                         }
                     }
-                    .disabled(downloading.contains(entry.id) || mutating)
+                    .disabled(downloading.contains(entry.id) || streaming.contains(entry.id) || mutating)
                 }
             }
         }
@@ -321,6 +334,21 @@ struct SFTPBrowserView: View {
             errorText = error.localizedDescription
         }
         mutating = false
+    }
+
+    private func playStream(_ entry: SFTPEntry) async {
+        guard !streaming.contains(entry.id) else { return }
+        streaming.insert(entry.id)
+        defer { streaming.remove(entry.id) }
+        do {
+            let password = try sftp.password(for: server)
+            let source = try await SFTPRangeStream.open(
+                server: server, password: password, entry: entry
+            )
+            library.playSFTP(source, title: entry.name)
+        } catch {
+            errorText = error.localizedDescription
+        }
     }
 
     private func download(_ entry: SFTPEntry, play: Bool) async {
