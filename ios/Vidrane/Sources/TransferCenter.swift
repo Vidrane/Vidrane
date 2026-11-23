@@ -44,7 +44,7 @@ private struct TransferJournalEntry: Codable {
     let kind: TransferKind
     let serverID: UUID?
     let remotePath: String?
-    var etag: String?
+    var etag: String? = nil
     var autoPlay: Bool
 }
 
