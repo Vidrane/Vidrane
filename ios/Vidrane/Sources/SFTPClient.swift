@@ -166,6 +166,25 @@ final class SFTPConnection {
         }
     }
 
+    /// Open a random-access handle for AVFoundation's resource loader.
+    /// Only real paths inside the configured canonical root are permitted.
+    func openReadStream(_ entry: SFTPEntry) async throws -> SFTPReadHandle {
+        guard !entry.isDirectory else { throw SFTPError.unsupportedEntry }
+        let path = try await resolved(entry.path)
+        let file = try await sftp.openFile(filePath: path, flags: .read)
+        do {
+            let attributes = try await file.readAttributes()
+            guard let size = attributes.size,
+                  size > 0, size <= UInt64(Int64.max) else {
+                throw SFTPError.incompleteTransfer
+            }
+            return SFTPReadHandle(connection: self, file: file, size: Int64(size))
+        } catch {
+            try? await file.close()
+            throw error
+        }
+    }
+
     /// Read bounded chunks directly into an app-private temporary file.
     /// No entire video is held in memory, and cancellation checks run
     /// between SFTP reads. The caller must move or remove the temp file.
@@ -199,5 +218,41 @@ final class SFTPConnection {
             try? FileManager.default.removeItem(at: temporary)
             throw error
         }
+    }
+}
+
+
+/// An open, verified SFTP file owned by one playback session. All reads
+/// are bounded; never load a full movie into the app's memory.
+final class SFTPReadHandle {
+    let size: Int64
+    private let connection: SFTPConnection
+    private let file: Citadel.SFTPFile
+
+    init(connection: SFTPConnection, file: Citadel.SFTPFile, size: Int64) {
+        self.connection = connection
+        self.file = file
+        self.size = size
+    }
+
+    func read(offset: Int64, count: Int) async throws -> Data {
+        guard offset >= 0, offset < size, count > 0,
+              count <= 64 * 1024, Int64(count) <= size - offset else {
+            throw SFTPError.invalidPath
+        }
+        try Task.checkCancellation()
+        let response = try await file.read(
+            from: UInt64(offset), length: UInt32(count)
+        )
+        try Task.checkCancellation()
+        guard response.readableBytes == count else {
+            throw SFTPError.incompleteTransfer
+        }
+        return Data(response.readableBytesView)
+    }
+
+    func close() async {
+        try? await file.close()
+        await connection.close()
     }
 }
