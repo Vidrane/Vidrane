@@ -44,7 +44,7 @@ struct AppRootView: View {
         .environmentObject(webdavStore)
         .environmentObject(transfers)
         .fullScreenCover(item: $library.playback) { request in
-            PlaybackView(request: request)
+            PlaybackHostView(request: request)
         }
         .alert("Vidrane", isPresented: Binding(
             get: { library.errorMessage != nil },

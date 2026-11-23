@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
+    @AppStorage("decoderPreference") private var decoderPreference = DecoderPreference.automatic.rawValue
     @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
     @AppStorage("subtitleDelay") private var subtitleDelay = 0.0
     @AppStorage("subtitleBackground") private var subtitleBackground = true
@@ -62,6 +63,27 @@ struct SettingsView: View {
                 Text("По умолчанию используется Vidrane Player. Здесь можно выбрать Apple Player для следующих воспроизведений. Переключение через меню «Плеер» во время просмотра действует только для текущего сеанса. Оба интерфейса используют AVFoundation, а системный PiP доступен в режиме Apple на совместимых устройствах.")
             }
 
+            Section {
+                Picker("Медиадвижок", selection: $decoderPreference) {
+                    Text(DecoderPreference.automatic.title)
+                        .tag(DecoderPreference.automatic.rawValue)
+                    Text(DecoderPreference.avFoundation.title)
+                        .tag(DecoderPreference.avFoundation.rawValue)
+                    if PlaybackDecoderAvailability.hasLibmpv {
+                        Text(DecoderPreference.libmpv.title)
+                            .tag(DecoderPreference.libmpv.rawValue)
+                    }
+                }
+                LabeledContent(
+                    "libmpv установлен",
+                    value: PlaybackDecoderAvailability.hasLibmpv ? "Да" : "Нет"
+                )
+            } header: {
+                Text("Декодер видео и аудио")
+            } footer: {
+                Text("Автоматический выбор ориентируется на тип файла; реальную поддержку кодека определяет сам движок. libmpv доступен только в сборках с библиотекой. Apple Player и Vidrane Player — отдельная настройка интерфейса.")
+            }
+
             Section("Внешние субтитры") {
                 Picker("Размер шрифта", selection: $subtitleFontSize) {
                     Text("18 pt").tag(18.0)
@@ -86,8 +108,11 @@ struct SettingsView: View {
             Section {
                 LabeledContent("Профиль сборки", value: signingProfile.capitalized)
                 LabeledContent("Rust ABI", value: String(vidrane_api_version()))
-                LabeledContent("Медиадвижок", value: "AVFoundation")
-                LabeledContent("FFmpeg / libmpv", value: "Пока не подключён")
+                LabeledContent("AVFoundation", value: "Системный")
+                LabeledContent(
+                    "libmpv / FFmpeg",
+                    value: PlaybackDecoderAvailability.hasLibmpv ? "Включён в сборку" : "Не включён"
+                )
                 LabeledContent("PiP", value: "Apple и Vidrane / при поддержке iOS")
             } header: {
                 Text("Системные возможности")

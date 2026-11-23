@@ -1,0 +1,78 @@
+import SwiftUI
+
+/// Decoder selection is independent of the appearance of playback controls.
+enum DecoderPreference: String, CaseIterable, Identifiable {
+    case automatic
+    case avFoundation
+    case libmpv
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .automatic: return "Автоматически"
+        case .avFoundation: return "Apple AVFoundation"
+        case .libmpv: return "libmpv / FFmpeg"
+        }
+    }
+}
+
+enum PlaybackDecoderAvailability {
+    static var hasLibmpv: Bool {
+        #if canImport(MPVKit)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// This is intentionally an extension-based starting choice, NOT a
+    /// promise that a particular codec can be decoded. The native player's
+    /// failure UI offers a real libmpv retry when linked.
+    static func prefersLibmpv(for url: URL, preference: DecoderPreference) -> Bool {
+        guard hasLibmpv else { return false }
+        switch preference {
+        case .avFoundation: return false
+        case .libmpv: return true
+        case .automatic:
+            let mpvCandidates: Set<String> = [
+                "mkv", "avi", "webm", "flv", "wmv", "ts", "m2ts",
+                "ogg", "opus", "flac", "ape", "mka", "ogv"
+            ]
+            return url.isFileURL && mpvCandidates.contains(url.pathExtension.lowercased())
+        }
+    }
+}
+
+/// Retains a single media request while changing backend after an error.
+/// This differs from changing the Vidrane/Apple presentation, which reuses
+/// the same AVPlayer within PlaybackView.
+struct PlaybackHostView: View {
+    let request: PlaybackRequest
+    @AppStorage("decoderPreference") private var storedPreference = DecoderPreference.automatic.rawValue
+    @State private var overrideLibmpv: Bool?
+
+    private var libmpvSelected: Bool {
+        if let overrideLibmpv { return overrideLibmpv }
+        let pref = DecoderPreference(rawValue: storedPreference) ?? .automatic
+        return PlaybackDecoderAvailability.prefersLibmpv(for: request.url, preference: pref)
+    }
+
+    var body: some View {
+        Group {
+            #if canImport(MPVKit)
+            if libmpvSelected {
+                VidraneMPVPlaybackView(request: request) {
+                    overrideLibmpv = false
+                }
+            } else {
+                PlaybackView(request: request) {
+                    overrideLibmpv = true
+                }
+            }
+            #else
+            PlaybackView(request: request, onTryLibmpv: nil)
+            #endif
+        }
+    }
+}

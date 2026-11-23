@@ -18,6 +18,7 @@ struct PlaybackView: View {
     @ObservedObject private var watchHistory = WatchHistory.shared
 
     let request: PlaybackRequest
+    let onTryLibmpv: (() -> Void)?
 
     // The same AVPlayer instance is retained when the interface changes,
     // preserving the stream, timestamp and current play/pause state.
@@ -64,14 +65,19 @@ struct PlaybackView: View {
                         Text(playbackError)
                             .font(.caption)
                             .multilineTextAlignment(.center)
-                        Text("Vidrane пока использует AVFoundation. Дополнительные декодеры FFmpeg/libmpv ещё не подключены.")
+                        Text("Текущий файл не воспроизводится через AVFoundation.")
                             .font(.caption2)
                             .multilineTextAlignment(.center)
+                        if let onTryLibmpv {
+                            Button("Попробовать libmpv") {
+                                onTryLibmpv()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                     }
                     .padding(20)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
                     .padding(22)
-                    .allowsHitTesting(false)
                 }
             }
             .overlay(alignment: .bottom) {
