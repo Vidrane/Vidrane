@@ -49,14 +49,19 @@ pub fn parse_multistatus(input: &str) -> Result<Vec<DavEntry>, &'static str> {
             is_directory: false,
             size: None,
         };
-        for stat in response.children().filter(|node| dav_tag(*node, "propstat")) {
+        for stat in response
+            .children()
+            .filter(|node| dav_tag(*node, "propstat"))
+        {
             let ok = dav_child(stat, "status")
                 .and_then(|node| node.text())
-                .map(|status| status.split_whitespace().any(|part| {
-                    part.len() == 3
-                        && part.starts_with('2')
-                        && part.bytes().all(|byte| byte.is_ascii_digit())
-                }))
+                .map(|status| {
+                    status.split_whitespace().any(|part| {
+                        part.len() == 3
+                            && part.starts_with('2')
+                            && part.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+                })
                 .unwrap_or(false);
             if !ok {
                 continue;
@@ -71,7 +76,9 @@ pub fn parse_multistatus(input: &str) -> Result<Vec<DavEntry>, &'static str> {
                 entry.is_directory = resource.children().any(|node| dav_tag(node, "collection"));
             }
             if let Some(length) = dav_child(prop, "getcontentlength") {
-                entry.size = length.text().and_then(|value| value.trim().parse::<u64>().ok());
+                entry.size = length
+                    .text()
+                    .and_then(|value| value.trim().parse::<u64>().ok());
             }
         }
         result.push(entry);
