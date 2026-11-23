@@ -29,3 +29,5 @@ Limitations:
 
 Rust unit tests cover SRT/VTT, Unicode BOM, CRLF, timing and malformed cues.
 The Swift bridge uses owned JSON and calls the matching Rust free function.
+
+Subtitle timing offset: Settings has an adjustment from -10 to +10 seconds, in half-second steps. A positive offset displays captions later; the in-player subtitles menu also has earlier/later and reset actions. The delay is persisted locally.

@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
     @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
+    @AppStorage("subtitleDelay") private var subtitleDelay = 0.0
     @AppStorage("subtitleBackground") private var subtitleBackground = true
     @State private var confirmingClearHistory = false
 
@@ -70,6 +71,13 @@ struct SettingsView: View {
                     Text("32 pt").tag(32.0)
                 }
                 Toggle("Затемнять фон текста", isOn: $subtitleBackground)
+                Stepper(
+                    "Задержка: \(String(format: "%+.1f", subtitleDelay)) с",
+                    value: $subtitleDelay,
+                    in: -10.0...10.0,
+                    step: 0.5
+                )
+                Button("Сбросить задержку") { subtitleDelay = 0 }
                 Text("Поддерживаются внешние UTF-8 SRT и WebVTT. Файл рядом с видео подхватывается автоматически, если совпадает основное имя. Внешние субтитры выводятся поверх видео, но не передаются в системный PiP.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)

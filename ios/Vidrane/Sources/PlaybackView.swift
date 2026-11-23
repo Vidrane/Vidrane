@@ -11,6 +11,7 @@ struct PlaybackView: View {
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
     @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
+    @AppStorage("subtitleDelay") private var subtitleDelay = 0.0
     @AppStorage("subtitleBackground") private var subtitleBackground = true
     @StateObject private var externalSubtitles = ExternalSubtitles()
     @State private var importingExternalSubtitles = false
@@ -74,7 +75,7 @@ struct PlaybackView: View {
                 }
             }
             .overlay(alignment: .bottom) {
-                if let subtitle = externalSubtitles.cue(at: elapsed) {
+                if let subtitle = externalSubtitles.cue(at: elapsed - subtitleDelay) {
                     Text(subtitle)
                         .font(.system(size: subtitleFontSize, weight: .medium))
                         .multilineTextAlignment(.center)
@@ -378,6 +379,23 @@ struct PlaybackView: View {
                     Label("Выбрать файл…", systemImage: "doc.text")
                 }
                 if let filename = externalSubtitles.filename {
+                    Button {
+                        subtitleDelay = max(-10.0, subtitleDelay - 0.5)
+                    } label: {
+                        Label("Раньше на 0,5 с", systemImage: "backward")
+                    }
+                    .disabled(subtitleDelay <= -10.0)
+                    Button {
+                        subtitleDelay = min(10.0, subtitleDelay + 0.5)
+                    } label: {
+                        Label("Позже на 0,5 с", systemImage: "forward")
+                    }
+                    .disabled(subtitleDelay >= 10.0)
+                    Button {
+                        subtitleDelay = 0
+                    } label: {
+                        Label("Сбросить задержку (\(String(format: "%+.1f", subtitleDelay)) с)", systemImage: "arrow.counterclockwise")
+                    }
                     Button {
                         externalSubtitles.enabled.toggle()
                     } label: {
