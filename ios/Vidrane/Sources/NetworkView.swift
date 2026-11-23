@@ -179,15 +179,28 @@ struct WebDAVFolderView: View {
 
     @State private var entries: [WebDAVEntry] = []
     @State private var loading = false
+    @State private var mutating = false
     @State private var errorText: String?
+    @State private var addingFolder = false
+    @State private var folderName = ""
+    @State private var uploading = false
+    @State private var renameTarget: WebDAVEntry?
+    @State private var renameText = ""
+    @State private var deleteTarget: WebDAVEntry?
 
+    private enum Change {
+        case createFolder(String)
+        case rename(WebDAVEntry, String)
+        case duplicate(WebDAVEntry)
+        case delete(WebDAVEntry)
+    }
 
     var body: some View {
         List {
-            if loading && entries.isEmpty {
+            if (loading || mutating) && entries.isEmpty {
                 HStack {
                     Spacer()
-                    ProgressView("Получение каталога")
+                    ProgressView(mutating ? "Выполнение операции" : "Получение каталога")
                     Spacer()
                 }
             } else if entries.isEmpty {
@@ -207,6 +220,7 @@ struct WebDAVFolderView: View {
                         Label(entry.name, systemImage: "folder")
                             .foregroundStyle(.primary)
                     }
+                    .contextMenu { changeMenu(for: entry) }
                 } else {
                     Menu {
                         Button {
@@ -221,18 +235,25 @@ struct WebDAVFolderView: View {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
                             }
                         }
+                        changeMenu(for: entry)
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: VidraneMediaKind(filename: entry.name).symbol)
                                 .foregroundStyle(VidraneStyle.accent)
                                 .frame(width: 25)
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.name).lineLimit(1)
+                                Text(entry.name)
+                                    .lineLimit(1)
                                     .foregroundStyle(.primary)
                                 if let size = entry.size {
-                                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                    Text(
+                                        ByteCountFormatter.string(
+                                            fromByteCount: size,
+                                            countStyle: .file
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                                 }
                             }
                             Spacer()
@@ -244,24 +265,92 @@ struct WebDAVFolderView: View {
                             }
                         }
                     }
-                    .disabled(transfers.isDownloading(entry.url))
+                    .disabled(transfers.isDownloading(entry.url) || mutating)
                 }
             }
         }
         .navigationTitle(directory == server.root ? server.title : directory.lastPathComponent)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if mutating { ProgressView() }
+                Menu {
+                    Button {
+                        folderName = ""
+                        addingFolder = true
+                    } label: {
+                        Label("Новая папка", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        uploading = true
+                    } label: {
+                        Label("Загрузить файлы на сервер", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .disabled(mutating)
+                .accessibilityLabel("Добавить на WebDAV")
+
                 Button {
                     Task { await reload() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .disabled(loading)
+                .disabled(loading || mutating)
                 .accessibilityLabel("Обновить каталог")
             }
         }
         .refreshable { await reload() }
         .task { await reload() }
+        .fileImporter(
+            isPresented: $uploading,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                Task { await uploadFiles(urls) }
+            case .failure(let error):
+                errorText = error.localizedDescription
+            }
+        }
+        .alert("Новая папка WebDAV", isPresented: $addingFolder) {
+            TextField("Название папки", text: $folderName)
+            Button("Создать") {
+                Task { await perform(.createFolder(folderName)) }
+            }
+            Button("Отмена", role: .cancel) {}
+        }
+        .alert("Переименовать на сервере", isPresented: Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )) {
+            TextField("Новое название", text: $renameText)
+            Button("Сохранить") {
+                if let entry = renameTarget {
+                    Task { await perform(.rename(entry, renameText)) }
+                }
+                renameTarget = nil
+            }
+            Button("Отмена", role: .cancel) { renameTarget = nil }
+        }
+        .confirmationDialog(
+            "Удалить \(deleteTarget?.name ?? "элемент") с WebDAV?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Удалить с сервера", role: .destructive) {
+                if let entry = deleteTarget {
+                    Task { await perform(.delete(entry)) }
+                }
+                deleteTarget = nil
+            }
+        } message: {
+            Text("Если это папка, сервер может удалить всё её содержимое. Отменить операцию невозможно.")
+        }
         .alert("WebDAV", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -272,16 +361,86 @@ struct WebDAVFolderView: View {
         }
     }
 
+    @ViewBuilder
+    private func changeMenu(for entry: WebDAVEntry) -> some View {
+        Button {
+            renameTarget = entry
+            renameText = entry.name
+        } label: {
+            Label("Переименовать", systemImage: "pencil")
+        }
+        Button {
+            Task { await perform(.duplicate(entry)) }
+        } label: {
+            Label("Создать копию", systemImage: "doc.on.doc")
+        }
+        Button(role: .destructive) {
+            deleteTarget = entry
+        } label: {
+            Label("Удалить с сервера", systemImage: "trash")
+        }
+    }
+
     private func reload() async {
         guard !loading else { return }
         loading = true
         defer { loading = false }
         do {
             let access = try webdav.access(server)
-            entries = try await WebDAVClient.shared.list(directory: directory, access: access)
+            entries = try await WebDAVClient.shared.list(
+                directory: directory, access: access
+            )
             errorText = nil
         } catch {
             entries = []
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func perform(_ change: Change) async {
+        guard !mutating else { return }
+        mutating = true
+        defer { mutating = false }
+        do {
+            let access = try webdav.access(server)
+            switch change {
+            case .createFolder(let name):
+                try await WebDAVClient.shared.createDirectory(
+                    named: name, in: directory, access: access
+                )
+            case .rename(let entry, let name):
+                try await WebDAVClient.shared.transfer(
+                    entry, into: directory, named: name,
+                    copy: false, access: access
+                )
+            case .duplicate(let entry):
+                let ext = entry.isDirectory ? "" : (entry.name as NSString).pathExtension
+                let stem = ext.isEmpty ? entry.name : (entry.name as NSString).deletingPathExtension
+                let duplicate = "\(stem) (копия)" + (ext.isEmpty ? "" : ".\(ext)")
+                try await WebDAVClient.shared.transfer(
+                    entry, into: directory, named: duplicate,
+                    copy: true, access: access
+                )
+            case .delete(let entry):
+                try await WebDAVClient.shared.delete(entry, access: access)
+            }
+            await reload()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+
+    private func uploadFiles(_ urls: [URL]) async {
+        guard !mutating else { return }
+        mutating = true
+        defer { mutating = false }
+        do {
+            let access = try webdav.access(server)
+            for url in urls {
+                try await WebDAVClient.shared.upload(url, in: directory, access: access)
+            }
+            await reload()
+        } catch {
             errorText = error.localizedDescription
         }
     }
