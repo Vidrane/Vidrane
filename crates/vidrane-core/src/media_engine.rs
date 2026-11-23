@@ -59,7 +59,10 @@ mod tests {
             native_ready: false,
             libmpv_ready: true,
         };
-        assert_eq!(choose(EnginePreference::Automatic, only_mpv), Decoder::Libmpv);
+        assert_eq!(
+            choose(EnginePreference::Automatic, only_mpv),
+            Decoder::Libmpv
+        );
     }
 
     #[test]
