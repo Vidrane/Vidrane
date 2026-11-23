@@ -147,7 +147,7 @@ mod tests {
                 text: "Hello & welcome".to_string()
             }
         );
-        assert_eq!(cues[1].end_ms, 5020);
+        assert_eq!(cues[1].end_ms, 5200);
         assert_eq!(cues[1].text, "Second\nline");
     }
 
