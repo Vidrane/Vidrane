@@ -20,6 +20,7 @@ enum DownloadStatus: String {
 struct DownloadRecord: Identifiable {
     let id: UUID
     let name: String
+    var source: String = "HTTPS"
     var status: DownloadStatus
     var receivedBytes: Int64 = 0
     var expectedBytes: Int64?
@@ -45,6 +46,23 @@ private final class DownloadContext {
          playWhenFinished: Bool, library: MediaLibrary) {
         self.request = request
         self.filename = filename
+        self.playWhenFinished = playWhenFinished
+        self.library = library
+    }
+}
+
+private final class SFTPDownloadContext {
+    let server: SFTPServer
+    let entry: SFTPEntry
+    let playWhenFinished: Bool
+    weak var library: MediaLibrary?
+    var task: Task<Void, Never>?
+    var generation = UUID()
+
+    init(server: SFTPServer, entry: SFTPEntry,
+         playWhenFinished: Bool, library: MediaLibrary) {
+        self.server = server
+        self.entry = entry
         self.playWhenFinished = playWhenFinished
         self.library = library
     }
@@ -134,6 +152,7 @@ final class TransferCenter: ObservableObject {
 
     @Published private(set) var records: [DownloadRecord] = []
     private var contexts: [UUID: DownloadContext] = [:]
+    private var sftpContexts: [UUID: SFTPDownloadContext] = [:]
     private lazy var delegate = DownloadDelegate(owner: self)
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
@@ -147,6 +166,32 @@ final class TransferCenter: ObservableObject {
         contexts.values.contains {
             $0.request.url == url && $0.task?.state == .running
         }
+    }
+
+    func isDownloadingSFTP(server: SFTPServer, entry: SFTPEntry) -> Bool {
+        sftpContexts.contains { id, context in
+            context.server.id == server.id && context.entry.path == entry.path &&
+                records.first(where: { $0.id == id })?.status == .running
+        }
+    }
+
+    func enqueueSFTP(
+        server: SFTPServer, entry: SFTPEntry,
+        playWhenFinished: Bool = false,
+        library: MediaLibrary
+    ) {
+        guard !entry.isDirectory,
+              !isDownloadingSFTP(server: server, entry: entry) else { return }
+        let id = UUID()
+        sftpContexts[id] = SFTPDownloadContext(
+            server: server, entry: entry,
+            playWhenFinished: playWhenFinished, library: library
+        )
+        records.insert(DownloadRecord(
+            id: id, name: entry.name, source: "SFTP",
+            status: .running, expectedBytes: entry.size
+        ), at: 0)
+        startSFTP(id)
     }
 
     func enqueue(
@@ -180,14 +225,20 @@ final class TransferCenter: ObservableObject {
     }
 
     func cancel(_ id: UUID) {
-        guard let context = contexts[id], let row = index(id),
-              records[row].status == .running else { return }
-        context.task?.cancel()
+        guard let row = index(id), records[row].status == .running else { return }
+        if let context = contexts[id] {
+            context.task?.cancel()
+        } else if let context = sftpContexts[id] {
+            context.task?.cancel()
+        } else {
+            return
+        }
         records[row].status = .cancelled
     }
 
     func retry(_ id: UUID) {
-        guard let row = index(id), contexts[id] != nil,
+        guard let row = index(id),
+              contexts[id] != nil || sftpContexts[id] != nil,
               records[row].status == .failed || records[row].status == .cancelled else {
             return
         }
@@ -195,12 +246,15 @@ final class TransferCenter: ObservableObject {
         records[row].receivedBytes = 0
         records[row].expectedBytes = nil
         records[row].error = nil
-        start(id)
+        if contexts[id] != nil { start(id) }
+        else { startSFTP(id) }
     }
 
     func remove(_ id: UUID) {
         contexts[id]?.task?.cancel()
+        sftpContexts[id]?.task?.cancel()
         contexts.removeValue(forKey: id)
+        sftpContexts.removeValue(forKey: id)
         records.removeAll { $0.id == id }
     }
 
@@ -214,6 +268,78 @@ final class TransferCenter: ObservableObject {
         task.taskDescription = id.uuidString
         context.task = task
         task.resume()
+    }
+
+    private func startSFTP(_ id: UUID) {
+        guard let context = sftpContexts[id] else { return }
+        let generation = UUID()
+        context.generation = generation
+        context.task = Task { [weak self] in
+            await self?.performSFTP(id, generation: generation)
+        }
+    }
+
+    private func sftpProgress(
+        _ id: UUID, generation: UUID, bytes: Int64, total: Int64?
+    ) {
+        guard let row = index(id), records[row].status == .running,
+              sftpContexts[id]?.generation == generation else { return }
+        records[row].receivedBytes = bytes
+        records[row].expectedBytes = total
+    }
+
+    private func performSFTP(_ id: UUID, generation: UUID) async {
+        guard let context = sftpContexts[id] else { return }
+        var connection: SFTPConnection?
+        var temporary: URL?
+        do {
+            let password = try SFTPStore.shared.password(for: context.server)
+            try Task.checkCancellation()
+            let active = try await SFTPConnection.connect(
+                server: context.server, password: password
+            )
+            connection = active
+            temporary = try await active.download(context.entry) { [weak self] bytes, total in
+                Task { @MainActor [weak self] in
+                    self?.sftpProgress(
+                        id, generation: generation, bytes: bytes, total: total
+                    )
+                }
+            }
+            await active.close()
+            connection = nil
+            try Task.checkCancellation()
+            guard let row = index(id), context.generation == generation,
+                  records[row].status == .running else {
+                if let temporary { try? FileManager.default.removeItem(at: temporary) }
+                return
+            }
+            guard let temporary, let library = context.library else {
+                throw SFTPError.incompleteTransfer
+            }
+            let local = try library.importRemoteFile(
+                at: temporary, filename: context.entry.name
+            )
+            self.sftpProgress(
+                id, generation: generation,
+                bytes: local.bytes, total: local.bytes
+            )
+            records[row].status = .finished
+            context.task = nil
+            sftpContexts.removeValue(forKey: id)
+            if context.playWhenFinished && local.kind.playable {
+                library.play(local)
+            }
+        } catch {
+            if let connection { await connection.close() }
+            if let temporary { try? FileManager.default.removeItem(at: temporary) }
+            guard let row = index(id), context.generation == generation,
+                  records[row].status == .running else { return }
+            records[row].status = Task.isCancelled ? .cancelled : .failed
+            records[row].error = Task.isCancelled
+                ? nil : "Не удалось скачать файл через SFTP: \(error.localizedDescription)"
+            context.task = nil
+        }
     }
 
     func progress(taskID: String?, taskIdentifier: Int, bytes: Int64, total: Int64) {

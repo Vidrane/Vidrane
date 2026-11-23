@@ -9,7 +9,7 @@ struct DownloadsView: View {
                 EmptyLibraryState(
                     symbol: "arrow.down.circle",
                     title: "Загрузок пока нет",
-                    detail: "Добавьте прямую HTTPS-ссылку во вкладке «Сеть» либо скачайте файл через WebDAV."
+                    detail: "Добавьте HTTPS-ссылку или скачайте файл через WebDAV либо SFTP во вкладке «Сеть»."
                 )
                 .listRowBackground(Color.clear)
             }
@@ -21,7 +21,7 @@ struct DownloadsView: View {
                             .foregroundStyle(VidraneStyle.accent)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(item.name).lineLimit(1)
-                            Text(item.status.description)
+                            Text("\(item.source) · \(item.status.description)")
                                 .font(.caption)
                                 .foregroundColor(item.status == .failed ? .red : .secondary)
                         }

@@ -82,13 +82,13 @@ struct SFTPAddView: View {
 struct SFTPBrowserView: View {
     @EnvironmentObject private var sftp: SFTPStore
     @EnvironmentObject private var library: MediaLibrary
+    @EnvironmentObject private var transfers: TransferCenter
 
     let server: SFTPServer
     let directory: String
 
     @State private var files: [SFTPEntry] = []
     @State private var loading = false
-    @State private var downloading: Set<String> = []
     @State private var streaming: Set<String> = []
     @State private var errorText: String?
     @State private var mutating = false
@@ -128,7 +128,7 @@ struct SFTPBrowserView: View {
                 } else {
                     Menu {
                         Button {
-                            Task { await download(entry, play: false) }
+                            transfer(entry, play: false)
                         } label: {
                             Label("Скачать в медиатеку", systemImage: "arrow.down.circle")
                         }
@@ -146,7 +146,7 @@ struct SFTPBrowserView: View {
                                 }
                             }
                             Button {
-                                Task { await download(entry, play: true) }
+                                transfer(entry, play: true)
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
                             }
@@ -172,7 +172,8 @@ struct SFTPBrowserView: View {
                                 }
                             }
                             Spacer()
-                            if downloading.contains(entry.id) || streaming.contains(entry.id) {
+                            if transfers.isDownloadingSFTP(server: server, entry: entry) ||
+                                streaming.contains(entry.id) {
                                 ProgressView()
                             } else {
                                 Image(systemName: "ellipsis.circle")
@@ -180,7 +181,10 @@ struct SFTPBrowserView: View {
                             }
                         }
                     }
-                    .disabled(downloading.contains(entry.id) || streaming.contains(entry.id) || mutating)
+                    .disabled(
+                        transfers.isDownloadingSFTP(server: server, entry: entry) ||
+                        streaming.contains(entry.id) || mutating
+                    )
                 }
             }
         }
@@ -351,30 +355,10 @@ struct SFTPBrowserView: View {
         }
     }
 
-    private func download(_ entry: SFTPEntry, play: Bool) async {
-        guard !downloading.contains(entry.id) else { return }
-        downloading.insert(entry.id)
-        defer { downloading.remove(entry.id) }
-        var connection: SFTPConnection?
-        var temporary: URL?
-        do {
-            let password = try sftp.password(for: server)
-            let active = try await SFTPConnection.connect(
-                server: server, password: password
-            )
-            connection = active
-            temporary = try await active.download(entry)
-            await active.close()
-            connection = nil
-
-            guard let downloaded = temporary else { throw SFTPError.incompleteTransfer }
-            let local = try library.importRemoteFile(at: downloaded, filename: entry.name)
-            temporary = nil
-            if play { library.play(local) }
-        } catch {
-            if let connection { await connection.close() }
-            errorText = error.localizedDescription
-        }
-        if let temporary { try? FileManager.default.removeItem(at: temporary) }
+    private func transfer(_ entry: SFTPEntry, play: Bool) {
+        transfers.enqueueSFTP(
+            server: server, entry: entry,
+            playWhenFinished: play, library: library
+        )
     }
 }
