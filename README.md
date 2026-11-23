@@ -22,7 +22,8 @@ libmpv/FFmpeg**. There is no extra premium, Lite or experimental IPA edition.
 - Nested local files with import, rename, copy, move, delete, search, sort,
   filter, file details, share sheet and persistent playlists/watch history.
 - SFTP with verified SSH host keys, Keychain passwords, folder browsing,
-  chunked download/upload, mkdir and confirmed remote delete.
+  chunked download/upload, mkdir, confirmed remote delete and native
+  AVFoundation streaming without full-file download.
 - HTTPS WebDAV with Keychain-backed Basic auth, folder operations,
   remote file uploads, authenticated downloads and native-compatible
   byte-range streaming without full-file imports.

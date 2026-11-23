@@ -14,11 +14,11 @@ Free/Lite/Plus functional tiers.
   or renaming also rewrites playlist and watch-history references.
 - Network: SFTP/SSH with strict trusted-host-key authentication, stored
   Keychain passwords and canonical path confinement. Partial remote file
-  operations and bounded transfers are available.
+  operations, bounded transfers and AVFoundation SFTP streaming are available.
 - Network: HTTPS WebDAV with guarded read/write operations and protected
   HTTP Range playback through AVAssetResourceLoader for native-supported
-  media. Rust validates Content-Range. SMB and SFTP/libmpv streaming
-  are planned.
+  media. Rust validates Content-Range. SMB and authenticated libmpv
+  streaming for nonnative formats remain planned.
 - Playback: Vidrane default UI plus optional Apple system controls for
   AVPlayer/AVFoundation; a separate libmpv engine with its own rendering
   lifecycle and custom Vidrane controls. Both engines are linked in the

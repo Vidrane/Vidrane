@@ -46,9 +46,26 @@ they do not load an entire media file into RAM. On completion the file
 is imported into the managed media library, optionally opened with
 the regular Vidrane decoder-selection policy.
 
+## Streaming without downloading
+
+MP4, MOV, M4V and native-compatible audio files can be played directly
+over SFTP through AVFoundation. The app opens an authenticated, verified
+SSH file handle and creates a synthetic AVURLAsset URL without credentials.
+
+AVAssetResourceLoader fetches only the requested byte ranges: at most
+64 KiB per outer read, using 32 KiB SFTP blocks internally. Short server
+replies are assembled until the requested range is satisfied. Seeking
+reads from a new offset. Dismissing playback cancels pending reads and
+closes the SSH connection.
+
+This is NOT libmpv streaming. MKV and other nonnative formats require
+download and play. Network and physical-iPhone tests are still pending.
+
 ## Not yet available
 
-- Streaming SFTP media directly to AVFoundation/libmpv.
+- Streaming SFTP media directly through libmpv for MKV and other
+  nonnative formats. AVFoundation-compatible SFTP streaming is now in
+  source code but still requires interoperability testing.
 - SFTP remote rename, copy, recursive delete and advanced batch operations.
 - Upload uses SSH_FXF_EXCL: compliant servers refuse to overwrite existing
   paths. Failed uploads may leave a partial file on the server.

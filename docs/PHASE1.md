@@ -21,6 +21,8 @@ Personal and Developer are Apple signing profiles, not app editions.
   share/search/sort/filter, path-stable playlists and watch history.
 - SFTP: SSH pinned host keys, Keychain credentials, nested directory
   browsing, chunked file downloads/uploads, mkdir and guarded deletion.
+  Direct AVFoundation playback of native-compatible SFTP media uses
+  bounded reads without importing the full file.
 - WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
   MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads and native
   AVFoundation on-demand byte-range streaming for supported media.
