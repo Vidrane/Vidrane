@@ -172,6 +172,7 @@ struct WebDAVAddView: View {
 struct WebDAVFolderView: View {
     @EnvironmentObject private var library: MediaLibrary
     @EnvironmentObject private var webdav: WebDAVStore
+    @EnvironmentObject private var transfers: TransferCenter
 
     let server: WebDAVServer
     let directory: URL
