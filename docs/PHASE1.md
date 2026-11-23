@@ -1,55 +1,44 @@
-# Vidrane: development status
+# Vidrane development status
 
-Vidrane is fully free and open source, with no paid feature tiers.
-Personal and Developer are Apple signing profiles, not app editions.
+Vidrane is free and open-source. Personal and Developer refer only to
+Apple account signing profiles; they are not different product tiers.
+The default player interface remains Vidrane, with optional Apple
+system controls and a selectable decoder.
 
 ## Implemented in source
 
-- Rust media, subtitle and WebDAV XML parsing; transfer, playlist,
-  resume and decoder-selection policies.
-- Six SwiftUI tabs, user settings and an integrated browser.
-- Default Vidrane Player UI, optional native Apple system controls.
-- AVFoundation playback with seek, speed, scaling, media selection and
-  system PiP when supported.
-- **libmpv + FFmpeg in both regular iOS builds**, not an optional IPA.
-  Uses MPVKit and a verified, pinned XCFramework. Controls for pause,
-  seek, double-tap, scaling, speed, track and subtitle selection, subtitle
-  delay, and VideoToolbox or software decoding.
-- SRT/WebVTT sidecar loading, in-app text captions and delay adjustments
-  for AVFoundation. Libmpv supplies additional subtitle format handling.
-- Nested local file manager: create/import/copy/move/rename/delete,
-  share/search/sort/filter, path-stable playlists and watch history.
-- SFTP: SSH pinned host keys, Keychain credentials, nested directory
-  browsing, chunked file downloads/uploads, mkdir and guarded deletion.
-  Direct AVFoundation playback of native-compatible SFTP media uses
-  bounded reads without importing the full file.
-- WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
-  MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads and native
-  AVFoundation on-demand byte-range streaming for supported media.
-- Unified foreground HTTPS/WebDAV/SFTP download queue with progress,
-  cancellation and retry; SFTP uploads have not yet joined this queue.
-- Main GitHub Actions generates unsigned Personal and Developer IPAs with
-  identical libmpv and AVFoundation support.
+- Rust core, C ABI, media classification, resume and playlists,
+  subtitle parsing, WebDAV XML and strict HTTP Content-Range validation.
+- Native SwiftUI tabs Local, Network, Playlists, Browser, Downloads and
+  Settings, with nested local file management and path-stable history.
+- AVFoundation media playback, customizable Vidrane controls,
+  optional Apple presentation, PiP where supported, media tracks,
+  gestures, scaling, speed and timed-text subtitles.
+- Real libmpv/FFmpeg with VideoToolbox or software decoding, integrated
+  into BOTH regular iOS unsigned IPA builds.
+- HTTPS WebDAV with Keychain, protected downloads, file operations,
+  AVFoundation streaming and libmpv remote MKV via byte-range relay.
+- SFTP with host-key pinning, Keychain, remote browsing, limited file
+  mutations, native AVFoundation media streaming and libmpv relay.
+- SMB3 encrypted connection, manual share setup, browse/download,
+  directory creation/removal and libmpv remote playback.
+- Durable HTTPS/WebDAV/SFTP/SMB foreground download queue with local
+  partial-file restoration and verified-offset continuation on relaunch.
 
-## Still required before iPhone testing or parity claims
+## Still incomplete or unverified
 
-- Hardware validation of native/libmpv playback, codecs, battery, audio,
-  VideoToolbox, PiP, subtitles and all local file operations.
-- Real WebDAV integration tests (especially mutation/upload semantics).
-- SMB/CIFS, FTP, NFS and DLNA/UPnP providers. SFTP still needs direct
-  media streaming, public-key login, resumable transfers and rename/copy.
-- Authenticated streaming for libmpv and broader media types such as MKV;
-  native AVFoundation byte-range WebDAV streaming is implemented in source
-  but still requires tests with real WebDAV servers.
-- Persistent background and resumable downloads, richer upload reporting.
-- libmpv PiP, video HDR/color/audio DSP features and source/license audit.
-- Batch file management, trash/undo, archive extraction, bookmarks.
-- Additional UI workflows, localization/accessibility and platform support.
+- Real iPhone tests of all code paths, codecs, VideoToolbox, PiP,
+  subtitles, battery and LAN permissions; real network-server tests.
+- Compatibility beyond SMB3 encryption, SMB upload/rename, automatic
+  share discovery, FTP, NFS and DLNA/UPnP.
+- App-independent background transfers, persistent upload queue,
+  robust network reconnection and full content integrity verification.
+- libmpv Picture-in-Picture and advanced HDR/audio/color controls.
+- Advanced library operations, archive extraction, accessibility,
+  Android/desktop implementations and nPlayer Plus feature parity.
+- Third-party LGPL/GPL/codec licensing and redistribution audit.
 
-## CI meaning
-
-Rust tests and release builds run separately. Main macOS CI compiles and
-packages the two libmpv-enabled unsigned IPA variants. Passing CI confirms
-compilation and packaging, **not physical-device performance or licensed
-public redistribution**. The user requested that installation and real
-iPhone testing wait until the basic nPlayer Plus feature set is broader.
+GitHub Actions tests/builds Rust and creates two unsigned iOS IPA
+artifacts. Compilation is not proof of functionality on a device or
+redistribution compliance. Per user's plan, iPhone testing is deferred
+until further feature parity.

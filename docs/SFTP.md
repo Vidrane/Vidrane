@@ -1,90 +1,43 @@
-# SFTP/SSH support in Vidrane (initial iOS implementation)
+# SFTP / SSH in Vidrane
 
-Vidrane's Network tab can add SFTP servers, browse remote directories
-and download files to the local media library, create directories,
-upload files and remove files or empty directories. The SSH transport uses
-Citadel 0.11.0 / NIOSSH 0.3.2. Both signing configurations ship the
-same source and libraries; there is no paid SFTP tier.
+The Network tab can save SSH/SFTP servers, browse directories, upload
+and download files, create directories and delete files or empty
+directories. A full verified OpenSSH host public key is mandatory before
+connecting; there is no accept-all-key or silent first-use trust option.
 
-## Adding a server
+## Setup
 
-Enter hostname, TCP port (default 22), SSH username, password and
-a configured absolute root directory (default "/"). You must also
-supply a **verified OpenSSH host public key** of the form:
+Enter hostname, TCP port (default 22), username, password and absolute
+root path (default /), plus a verified ssh-ed25519 or ecdsa OpenSSH
+host public key. Verify the key independently with the SSH server
+administrator, not only with an unverified first connection.
 
-    ssh-ed25519 AAAAC3... comment
-    ecdsa-sha2-nistp256 AAAAE2... comment
+Passwords live in Keychain; public host keys and non-secret connection
+metadata are saved in app preferences. The connection checks canonical
+remote paths to reduce risks of symlink escapes.
 
-These lines are examples of syntax, not actual server keys. Retrieve
-the public key through a channel independent of the connection you are
-about to make; for instance, ask the server administrator for the
-host's /etc/ssh/ssh_host_ed25519_key.pub and verify it independently.
-Do not enter a private host key or your own private SSH key.
+## Operations
 
-Citadel rejects mismatched server keys with a trusted-key SSH
-handshake validator. There is no "accept any SSH host" option.
+- Navigate nested SFTP folders, excluding symlinks where reported.
+- Download/upload in bounded SSH blocks; SFTP uploads are foreground
+  operations with no shared upload progress UI yet.
+- Create remote folders and delete files or EMPTY folders after
+  confirmation. Recursive deletion and rename/copy are not supported.
+- Play MP4/MOV/M4V or compatible audio directly with AVFoundation via
+  a synthetic URL and random-access SFTP reads.
+- Play MKV and other libmpv formats via the tokenized localhost-only
+  Range relay without saving the entire file. This is a local proxy,
+  not direct FFmpeg SSH support.
+- Downloads share the durable HTTPS/WebDAV/SMB/SFTP queue and can
+  recover partial files on the next launch after an offset comparison.
 
-Passwords use iOS Keychain (device-only and accessible when unlocked).
-The pinned *public* key, server name, hostname, user, port and root
-directory are stored in app preferences. Removing a server erases its
-stored password.
+## Remaining limitations
 
-## Browsing and downloading
+No SSH user private-key authentication, full SFTP file operations,
+true post-termination background downloads, persistent upload queue,
+automatic reconnection or full remote-file hash verification.
+Physical-device interoperability is still untested.
 
-Open the SFTP connection from the Network tab, navigate directories,
-and select Download or Download and Play. For every listing or file
-transfer, the adapter creates an authenticated SSH connection and
-closes it when the task completes.
-
-Directory names are checked against relative traversal and separators.
-The adapter resolves server-side canonical paths with SFTP realpath and
-rejects paths outside the configured canonical root, including symlink
-escapes. Directory entries identified as symlinks are excluded.
-
-Downloads read 32 KiB SFTP chunks into an app-owned temporary file;
-they do not load an entire media file into RAM. On completion the file
-is imported into the managed media library, optionally opened with
-the regular Vidrane decoder-selection policy.
-
-## Streaming without downloading
-
-MP4, MOV, M4V and native-compatible audio files can be played directly
-over SFTP through AVFoundation. The app opens an authenticated, verified
-SSH file handle and creates a synthetic AVURLAsset URL without credentials.
-
-AVAssetResourceLoader fetches only the requested byte ranges: at most
-64 KiB per outer read, using 32 KiB SFTP blocks internally. Short server
-replies are assembled until the requested range is satisfied. Seeking
-reads from a new offset. Dismissing playback cancels pending reads and
-closes the SSH connection.
-
-This is NOT libmpv streaming. MKV and other nonnative formats require
-download and play. Network and physical-iPhone tests are still pending.
-
-## Not yet available
-
-- Streaming SFTP media directly through libmpv for MKV and other
-  nonnative formats. AVFoundation-compatible SFTP streaming is now in
-  source code but still requires interoperability testing.
-- SFTP remote rename, copy, recursive delete and advanced batch operations.
-- Upload uses SSH_FXF_EXCL: compliant servers refuse to overwrite existing
-  paths. Failed uploads may leave a partial file on the server.
-- Remote removal of a directory is non-recursive (empty folders only),
-  and the UI requires confirmation before any remote delete.
-- Private-key user authentication and passwordless login.
-- Durable resumable transfers and background URLSession-equivalent
-  persistence. Foreground SFTP downloads now share the main Downloads
-  queue with HTTP/WebDAV, live progress, cancellation and retry from zero.
-  SFTP uploads still use a busy indicator rather than the queue.
-- SMB/CIFS and the other network provider implementations.
-- Interoperability tests against real SSH servers and iPhone validation.
-
-## Reproducible build and licensing
-
-The iOS XcodeGen project pins Citadel 0.11.0 and Joannis/swift-nio-ssh
-0.3.2 as Swift packages. These have independent third-party licenses
-and transitive dependencies. Audit them alongside libmpv/FFmpeg before
-public redistribution.
-
-Passing GitHub Actions establishes source compilation and packaging,
-not host-key interoperability or physical-device playback.
+Citadel 0.11.0 and NIOSSH 0.3.2 are pinned in the XcodeGen project.
+Their independent licenses and dependencies require review before
+distribution.

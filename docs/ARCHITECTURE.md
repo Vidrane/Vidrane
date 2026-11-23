@@ -1,37 +1,31 @@
 # Vidrane architecture
 
-One free and open-source application, with no subscription and no
-Free/Lite/Plus functional tiers.
+One free, open-source application. Apple Personal/Developer are signing
+profiles without paid feature differences.
 
-## Core and platform boundaries
+## Modules
 
-- Rust: media types, playlist and download state rules, playback resume
-  and decoder policy, subtitle parsing and DAV multistatus XML parsing.
-  Exposed to iOS over a C ABI.
-- iOS SwiftUI: app navigation, local Documents/Media tree, Keychain,
-  URLSession/WebDAV, WebKit, AVKit, AVFoundation and MPVKit.
-- Local media: nested folders with relative path identifiers. Moving
-  or renaming also rewrites playlist and watch-history references.
-- Network: SFTP/SSH with strict trusted-host-key authentication, stored
-  Keychain passwords and canonical path confinement. Partial remote file
-  operations, bounded transfers and AVFoundation SFTP streaming are available.
-- Network: HTTPS WebDAV with guarded read/write operations and protected
-  HTTP Range playback through AVAssetResourceLoader for native-supported
-  media. Rust validates Content-Range. SMB and authenticated libmpv
-  streaming for nonnative formats remain planned.
-- Playback: Vidrane default UI plus optional Apple system controls for
-  AVPlayer/AVFoundation; a separate libmpv engine with its own rendering
-  lifecycle and custom Vidrane controls. Both engines are linked in the
-  standard iOS Personal and Developer builds.
-- Main iOS CI prepares a pinned libmpv XCFramework with SHA-256 checking,
-  then builds the same app code for both signing configurations.
+- Rust shared core + C ABI: media types, playlist/transfer state,
+  subtitles, resume behavior, WebDAV XML and HTTP Range validation.
+- SwiftUI: six-tab interface, preferences, media library with nested
+  folders, WebKit browser and native iOS file integrations.
+- Native media: AVFoundation with Vidrane or Apple presentation.
+- libmpv: independently linked MPVKit decoder and render surface,
+  included in both standard iOS IPA build configurations.
+- Remote network: WebDAV HTTPS with Keychain, SFTP with SSH host-key
+  pinning, SMB3 with share encryption and Keychain. A localhost-only,
+  randomly tokenized HTTP byte-range bridge serves remote fragments
+  to libmpv. Native AVAssetResourceLoader supports compatible WebDAV
+  and SFTP media streams.
+- Transfers: persisted journal and .part files in Application Support;
+  credential and signed URL secrets in Keychain; resumed foreground
+  downloads after relaunch with limited remote-content verification.
 
-## Restrictions and validation
+## Security and distribution constraints
 
-Apple-specific entitlements and signing are not bypassed. Native PiP
-availability depends on device/session; libmpv PiP is not implemented.
-No physical-device playback or compatibility testing has been performed.
-The nPlayer reference is design inspiration, not copied proprietary code.
-
-MIT licensing for Vidrane sources does not override upstream library,
-codec or patent obligations. See [MPV iOS](MPV_IOS.md).
+Network transports reject unsupported or unsafe modes where identified.
+SMB3 encryption is required; there is no SMB1 fallback. The local relay
+is bound to 127.0.0.1 and requires an unpredictable per-session token.
+A third-party codec and LGPL/GPL licensing review is needed before
+redistributing a public signed app. Real iOS hardware and network
+interoperability have not yet been validated.
