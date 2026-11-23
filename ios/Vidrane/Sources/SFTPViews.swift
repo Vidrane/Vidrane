@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SFTPAddView: View {
     @EnvironmentObject private var sftp: SFTPStore
@@ -89,6 +90,11 @@ struct SFTPBrowserView: View {
     @State private var loading = false
     @State private var downloading: Set<String> = []
     @State private var errorText: String?
+    @State private var mutating = false
+    @State private var uploading = false
+    @State private var creatingFolder = false
+    @State private var folderName = ""
+    @State private var deleteTarget: SFTPEntry?
 
     var body: some View {
         List {
@@ -113,6 +119,11 @@ struct SFTPBrowserView: View {
                     } label: {
                         Label(entry.name, systemImage: "folder")
                     }
+                    .contextMenu {
+                        Button(role: .destructive) { deleteTarget = entry } label: {
+                            Label("Удалить пустую папку", systemImage: "trash")
+                        }
+                    }
                 } else {
                     Menu {
                         Button {
@@ -126,6 +137,11 @@ struct SFTPBrowserView: View {
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
                             }
+                        }
+                        Button(role: .destructive) {
+                            deleteTarget = entry
+                        } label: {
+                            Label("Удалить с сервера", systemImage: "trash")
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -151,24 +167,70 @@ struct SFTPBrowserView: View {
                             }
                         }
                     }
-                    .disabled(downloading.contains(entry.id))
+                    .disabled(downloading.contains(entry.id) || mutating)
                 }
             }
         }
         .navigationTitle(directory == server.rootPath ? server.title : (directory as NSString).lastPathComponent)
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if mutating { ProgressView() }
+                Menu {
+                    Button {
+                        folderName = ""
+                        creatingFolder = true
+                    } label: {
+                        Label("Новая папка", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        uploading = true
+                    } label: {
+                        Label("Загрузить файлы на SFTP", systemImage: "square.and.arrow.up")
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .disabled(mutating)
                 Button {
                     Task { await reload() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
-                .disabled(loading)
+                .disabled(loading || mutating)
                 .accessibilityLabel("Обновить папку SFTP")
             }
         }
         .refreshable { await reload() }
         .task { await reload() }
+        .fileImporter(
+            isPresented: $uploading,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls): Task { await uploadFiles(urls) }
+            case .failure(let error): errorText = error.localizedDescription
+            }
+        }
+        .alert("Новая папка SFTP", isPresented: $creatingFolder) {
+            TextField("Название папки", text: $folderName)
+            Button("Создать") { Task { await createDirectory() } }
+            Button("Отмена", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Удалить \\(deleteTarget?.name ?? "элемент") с SFTP?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ), titleVisibility: .visible
+        ) {
+            Button("Удалить с сервера", role: .destructive) {
+                if let entry = deleteTarget { Task { await remove(entry) } }
+                deleteTarget = nil
+            }
+        } message: {
+            Text("Папку можно удалить только если она пуста. Операция необратима.")
+        }
         .alert("SFTP", isPresented: Binding(
             get: { errorText != nil },
             set: { if !$0 { errorText = nil } }
@@ -200,6 +262,65 @@ struct SFTPBrowserView: View {
             files = []
             errorText = error.localizedDescription
         }
+    }
+
+    private func createDirectory() async {
+        guard !mutating else { return }
+        mutating = true
+        var connection: SFTPConnection?
+        do {
+            let password = try sftp.password(for: server)
+            let active = try await SFTPConnection.connect(server: server, password: password)
+            connection = active
+            try await active.createDirectory(named: folderName, in: directory)
+            await active.close()
+            connection = nil
+            await reload()
+        } catch {
+            if let connection { await connection.close() }
+            errorText = error.localizedDescription
+        }
+        mutating = false
+    }
+
+    private func remove(_ entry: SFTPEntry) async {
+        guard !mutating else { return }
+        mutating = true
+        var connection: SFTPConnection?
+        do {
+            let password = try sftp.password(for: server)
+            let active = try await SFTPConnection.connect(server: server, password: password)
+            connection = active
+            try await active.remove(entry)
+            await active.close()
+            connection = nil
+            await reload()
+        } catch {
+            if let connection { await connection.close() }
+            errorText = error.localizedDescription
+        }
+        mutating = false
+    }
+
+    private func uploadFiles(_ urls: [URL]) async {
+        guard !mutating else { return }
+        mutating = true
+        var connection: SFTPConnection?
+        do {
+            let password = try sftp.password(for: server)
+            let active = try await SFTPConnection.connect(server: server, password: password)
+            connection = active
+            for url in urls {
+                try await active.upload(localURL: url, in: directory)
+            }
+            await active.close()
+            connection = nil
+            await reload()
+        } catch {
+            if let connection { await connection.close() }
+            errorText = error.localizedDescription
+        }
+        mutating = false
     }
 
     private func download(_ entry: SFTPEntry, play: Bool) async {
