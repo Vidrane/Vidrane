@@ -1,37 +1,46 @@
 # Vidrane: development status
 
-One open-source free application, with no paid feature tiers. Personal and
-Developer are Apple signing profiles, not app editions.
+Vidrane is fully free and open source, with no paid feature tiers.
+Personal and Developer are Apple signing profiles, not app editions.
 
 ## Implemented in source
 
-- Rust media classification, subtitle and WebDAV parsers, playlist,
-  transfer-state, resume and decoder-selection policies.
-- Six SwiftUI tabs, settings and WebKit browser.
-- Vidrane custom controls by default; optional Apple system interface.
-- AVFoundation playback, PiP, playback controls, track selection and resume.
-- Experimental independently linked libmpv/FFmpeg iOS variant with actual
-  decoder context and OpenGL ES video rendering; builds in GitHub Actions.
-- SRT/WebVTT sidecar and user-selected subtitle overlay with delay and style.
-- Folder-aware local media manager: nested import, browse, copy, move,
-  rename, delete, share, search, filter and sort.
-- Relative-path playlist/history IDs updated after rename or move.
-- WebDAV: HTTPS Basic/Keychain, PROPFIND browsing, downloads, MKCOL, MOVE,
-  COPY, DELETE and PUT uploads.
-- Unified foreground HTTPS/WebDAV download queue with progress, cancel and
-  retry. Personal/Developer unsigned IPAs build from the same code.
+- Rust media, subtitle and WebDAV XML parsing; transfer, playlist,
+  resume and decoder-selection policies.
+- Six SwiftUI tabs, user settings and an integrated browser.
+- Default Vidrane Player UI, optional native Apple system controls.
+- AVFoundation playback with seek, speed, scaling, media selection and
+  system PiP when supported.
+- **libmpv + FFmpeg in both regular iOS builds**, not an optional IPA.
+  Uses MPVKit and a verified, pinned XCFramework. Controls for pause,
+  seek, double-tap, scaling, speed, track and subtitle selection, subtitle
+  delay, and VideoToolbox or software decoding.
+- SRT/WebVTT sidecar loading, in-app text captions and delay adjustments
+  for AVFoundation. Libmpv supplies additional subtitle format handling.
+- Nested local file manager: create/import/copy/move/rename/delete,
+  share/search/sort/filter, path-stable playlists and watch history.
+- WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
+  MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads.
+- Foreground HTTPS/WebDAV transfers with progress, cancellation and retry.
+- Main GitHub Actions generates unsigned Personal and Developer IPAs with
+  identical libmpv and AVFoundation support.
 
-## Still planned or unverified
+## Still required before iPhone testing or parity claims
 
-- Physical-device verification of playback, codec support, PiP and battery.
-- Real-server interoperability tests for WebDAV mutations and transfers.
-- SMB/CIFS, SFTP/FTP, NFS and DLNA/UPnP providers.
-- libmpv PiP and full HDR/Dolby Vision/Atmos/DTS behavior and license audit.
-- Authenticated range streaming without downloading the entire file.
-- Durable background downloads, resumable transfers and upload progress.
-- Local trash/undo, batch actions, archive extraction and external bookmarks.
-- Android/desktop frontends and broader nPlayer Plus feature parity.
+- Hardware validation of native/libmpv playback, codecs, battery, audio,
+  VideoToolbox, PiP, subtitles and all local file operations.
+- Real WebDAV integration tests (especially mutation/upload semantics).
+- SMB/CIFS, SFTP, FTP, NFS and DLNA/UPnP providers.
+- Authenticated remote streaming without a full local download.
+- Persistent background and resumable downloads, richer upload reporting.
+- libmpv PiP, video HDR/color/audio DSP features and source/license audit.
+- Batch file management, trash/undo, archive extraction, bookmarks.
+- Additional UI workflows, localization/accessibility and platform support.
 
-GitHub Actions currently validates Rust and standard iOS unsigned builds.
-The experimental libmpv workflow validates the dependency-based iOS variant.
-A passing CI build does NOT mean hardware testing has been completed.
+## CI meaning
+
+Rust tests and release builds run separately. Main macOS CI compiles and
+packages the two libmpv-enabled unsigned IPA variants. Passing CI confirms
+compilation and packaging, **not physical-device performance or licensed
+public redistribution**. The user requested that installation and real
+iPhone testing wait until the basic nPlayer Plus feature set is broader.

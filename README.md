@@ -1,77 +1,79 @@
 # Vidrane
 
-**Vidrane** is a free, open-source media player with a shared Rust core and native platform frontends. Our long-term goal is comprehensive media, network and subtitle functionality. There are **no paid feature tiers**.
+**Vidrane** is an open-source multimedia player with a Rust core and native
+frontends. All implemented features are free, with no subscriptions or
+paid tiers. Current status: **v0.1.0-dev**, not yet feature-complete versus
+nPlayer Plus.
 
-**Status: v0.1.0-dev, first iOS foundation.** The project is not yet at nPlayer Plus feature parity.
+## Main iOS application
 
-## Current implementation
+The **main Personal and Developer IPA builds both include AVFoundation and
+libmpv/FFmpeg**. There is no extra premium, Lite or experimental IPA edition.
 
-- Dark iOS interface with six major areas: Local, Network, Playlists, Browser, Downloads and Settings.
-- Imports files from iOS Files to the app's own Media directory; file deletion and local library.
-- AVFoundation audio/video playback with native controls and system PiP where available.
-- Locally persisted playlists: create, add items, remove items.
-- Direct HTTPS streaming and basic one-file HTTPS downloads.
-- Embedded WebKit browser; persistent display and playback settings.
-- Rust workspace with C ABI for media classification, unit tests and capability requirements.
+- Vidrane Player is the default interface. Apple's system controls remain
+  optional when using the native AVFoundation decoder.
+- Select Automatic, AVFoundation or libmpv in Settings. Automatic routing is
+  heuristic and real codec support still requires device testing.
+- Native PiP, playback gestures, scaling, audio/subtitle track selection,
+  resume history and external timed-text subtitles where supported.
+- libmpv adds a real alternative decoder, with VideoToolbox/software
+  preferences, track selection, subtitle timing and video scaling.
+- Six tabs: Local, Network, Playlists, Browser, Downloads and Settings.
+- Nested local files with import, rename, copy, move, delete, search, sort,
+  filter, file details, share sheet and persistent playlists/watch history.
+- HTTPS WebDAV with Keychain-backed Basic auth, folder operations,
+  remote file uploads and authenticated downloads.
+- A foreground download queue with progress, cancellation and retries.
 
 ## Architecture
 
-- crates/vidrane-core: shared Rust domain and capability primitives.
-- crates/vidrane-ffi: native C ABI, currently used by iOS file classification.
-- ios/Vidrane/Sources: SwiftUI frontend with AVKit, WebKit and URLSession.
-- ios/Vidrane/Config: Personal and Developer signing configurations.
-- docs/PHASE1.md: implemented, unverified and future work.
-- docs/ARCHITECTURE.md: project boundaries.
+- `crates/vidrane-core`: shared Rust media, parsing and domain policies.
+- `crates/vidrane-ffi`: native C ABI bridge.
+- `ios/Vidrane/Sources`: SwiftUI, AVKit, MPVKit and platform APIs.
+- `ios/mpv/prepare.sh`: fetches pinned MPVKit sources and verified XCFramework.
+- `.github/workflows/ios.yml`: main iOS Personal/Developer unsigned IPA builds.
 
-Swift is used for iOS UI and system framework bridging; shared cross-platform code lives in Rust.
+## Build
 
-## Build Rust
+Rust:
 
+    cargo fmt --all -- --check
     cargo test --workspace
     cargo build --workspace --release
 
-## Build iOS on a Mac
+iOS device (requires macOS, Xcode, XcodeGen, Rust iOS target):
 
-Install Xcode, Rust and XcodeGen. Then:
-
-    rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+    rustup target add aarch64-apple-ios
+    bash ios/mpv/prepare.sh
     cd ios/Vidrane
     xcodegen generate
-    xcodebuild -project Vidrane.xcodeproj -scheme VidranePersonal -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' VIDRANE_RUST_TARGET=aarch64-apple-ios-sim CODE_SIGNING_ALLOWED=NO build
+    xcodebuild -project Vidrane.xcodeproj -scheme VidranePersonal \
+      -configuration Release -sdk iphoneos \
+      -destination 'generic/platform=iOS' \
+      VIDRANE_RUST_TARGET=aarch64-apple-ios \
+      CODE_SIGNING_ALLOWED=NO build
 
-GitHub Actions attempts device builds for both signing profiles and publishes unsigned IPA files. They are **not installable until signed** with an authorized Apple ID and matching provisioning. No certificates or private keys are stored here.
+Build the second signing profile with the `VidraneDeveloper` scheme.
+Both variants have the same features but still need legitimate signing
+to install on a physical iPhone.
 
-## Apple profile policy
+## Documentation
 
-VidranePersonal and VidraneDeveloper contain the same features; they differ only in intended code signing and future platform entitlement configuration. Personal Team remains subject to Apple's restrictions; paid Developer Program membership does not itself grant every entitlement.
+- [Architecture](docs/ARCHITECTURE.md)
+- [Implementation status](docs/PHASE1.md)
+- [Local files](docs/LOCAL_FILES.md)
+- [WebDAV](docs/NETWORK.md)
+- [Subtitle support](docs/SUBTITLES.md)
+- [Media engines](docs/ENGINE.md)
+- [Pinned libmpv build and licensing](docs/MPV_IOS.md)
 
-## License
+## License and status
 
-MIT. Independent source code; no proprietary nPlayer assets or code are included.
+Vidrane-owned code is released under MIT. Upstream MPVKit/libmpv/FFmpeg and
+transitive codec libraries have independent licenses and possible patents.
+Review the actual upstream binary and distribution obligations before
+redistributing a signed public release.
 
-## iOS player interface
-
-Vidrane's custom interface is the default. Apple system controls are optional; both native presentations use AVFoundation and offer PiP when supported. The separate experimental libmpv build provides an additional decoder.
-
-## Subtitle and decoder roadmap
-
-Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen captions on iOS. The native interfaces use AVFoundation; the separately built optional MPVKit variant also includes a working libmpv/FFmpeg integration at the code/CI level, pending physical-device verification. See [subtitle support](docs/SUBTITLES.md) and [engine architecture](docs/ENGINE.md).
-
-## Network and transfers
-
-An iOS HTTPS WebDAV browser supports Basic authorization, folder navigation and importing remote files into local media. Direct HTTPS downloads and authenticated WebDAV downloads now share a foreground queue with progress, cancel and retry. For security details and limits see [network architecture](docs/NETWORK.md). WebDAV interoperability still needs live-server testing.
-
-
-## Experimental libmpv iOS build
-
-Vidrane has a separately built libmpv/FFmpeg adapter using a pinned
-third-party MPVKit wrapper and XCFramework. The default app remains
-AVFoundation-based, so Personal and Developer builds remain lightweight.
-With libmpv linked, the decoder can be selected in Settings, and
-unsupported native formats can be retried with the alternative backend.
-The experiments are not yet tested on a physical iPhone.
-See [MPV iOS build guide](docs/MPV_IOS.md).
-
-## Local and WebDAV file management
-
-Vidrane now supports nested local folders, copy/move/rename/delete and path-stable playlists/history. The WebDAV client also includes remote create/rename/copy/delete and uploads through HTTPS. Both are compiled by CI but still need real device/server tests. See [local files](docs/LOCAL_FILES.md) and [WebDAV operations](docs/NETWORK.md).
+Compilation in GitHub Actions is not a substitute for real iPhone tests.
+Device testing will begin after sufficient basic nPlayer-like functionality
+is implemented, as requested.

@@ -1,68 +1,69 @@
-# Experimental iOS libmpv backend
+# libmpv/FFmpeg in main iOS builds
 
-The standard Vidrane Personal/Developer IPA builds still use AVFoundation.
-An **additional** workflow prepares a real libmpv/FFmpeg video backend and
-builds a second, explicitly labelled experimental IPA variant.
+libmpv is now included in **both standard VidranePersonal and
+VidraneDeveloper unsigned IPA builds**, rather than published as a separate
+experimental flavor. Both signing profiles have identical feature access.
 
-## Reproducible build inputs
+## Reproducible dependency
 
-- Upstream: https://github.com/libmpv-ios/mpv-ios
-- Tag: v0.1.2
-- Pinned source commit: 747cd35525cb7466475d8534b25480c8fe21c5ac
-- Binary: Libmpv.xcframework.zip from that release, approx. 169 MiB
-- SHA-256: ea5ca804e19167072493a3e2fc4c003c2eaec84dc123bb62248932c71a891807
+- Upstream wrapper: https://github.com/libmpv-ios/mpv-ios
+- Pinned release: v0.1.2
+- Pinned source SHA: 747cd35525cb7466475d8534b25480c8fe21c5ac
+- Third-party file: Libmpv.xcframework.zip (release artifact)
+- Pinned SHA-256: ea5ca804e19167072493a3e2fc4c003c2eaec84dc123bb62248932c71a891807
 
-The archive is downloaded at build time. Vidrane never commits the third-party
-binary to its Git repository. The preparation script verifies the exact source
-revision and SHA-256, then generates a second XcodeGen project specification
-that depends on MPVKit. The regular Xcode project and CI remain independent.
+The binary is downloaded at build time. The checked-in preparation script
+verifies the source revision and archive SHA-256 before unzipping. Vidrane
+does not commit this third-party binary to its Git repository.
 
-Run on a Mac with Xcode, Rust iOS targets and XcodeGen:
+## Build main IPA on macOS
+
+Prerequisites: Xcode, XcodeGen and Rust target aarch64-apple-ios.
 
     bash ios/mpv/prepare.sh
     cd ios/Vidrane
-    xcodegen generate --spec project-mpv.generated.yml
+    xcodegen generate
     xcodebuild -project Vidrane.xcodeproj -scheme VidranePersonal \
       -configuration Release -sdk iphoneos \
-      -destination 'generic/platform=iOS' VIDRANE_RUST_TARGET=aarch64-apple-ios \
+      -destination 'generic/platform=iOS' \
+      VIDRANE_RUST_TARGET=aarch64-apple-ios \
       CODE_SIGNING_ALLOWED=NO build
 
-The same code builds the VidraneDeveloper scheme. The unsigned results cannot
-be installed without Apple signing/provisioning.
+For Developer use the VidraneDeveloper scheme. The same source and libmpv
+package are linked in both. The default CI is .github/workflows/ios.yml
+and publishes two unsigned IPA artifacts.
 
-GitHub Actions workflow: .github/workflows/ios-mpv.yml
+The framework may not provide all targets needed by an iOS Simulator.
+The documented command builds an iOS device artifact. IPA files must be
+legitimately signed before installing on a real device.
 
-## Playback architecture
+## Decoder and interface selection
 
-- Application settings -> decoder preference: Automatic / AVFoundation /
-  libmpv, with libmpv shown only when the library is actually linked.
-- The default player *interface* is Vidrane, not Apple.
-- The Vidrane AVFoundation presentation and Apple system presentation share
-  one AVPlayer; both are kept intact.
-- The optional libmpv playback view owns a distinct MPVCore decoder context,
-  renders via MPVGLView (OpenGL ES) and supports play/pause, seek, speed, track
-  selection and external subtitle files.
-- Automatic routing starts AVFoundation for typical native formats and prefers
-  libmpv for media extensions such as MKV, FLAC, AVI and WebM. Extensions are
-  a heuristic, not a reliable codec capability probe.
-- On AVFoundation failure the user can try libmpv without reopening the file
-  manually. libmpv can return to the native backend. Backend changes recreate
-  a decoder session; the local shared watch history can restore positions.
-- OpenGL ES and VideoToolbox behavior, actual codec support, battery use and
-  audio session behavior all require tests on a physical device.
+- Vidrane Player UI is the default. Apple controls are an alternative.
+- The Apple presentation uses AVPlayer/AVFoundation; it cannot wrap libmpv.
+- Selecting libmpv explicitly uses Vidrane's custom libmpv controls,
+  even when Apple controls are configured as the default interface.
+- Automatic decoder preference with Apple presentation starts AVFoundation.
+- With Vidrane UI, automatic mode initially prefers native playback for
+  typical Apple formats and libmpv for a set of alternative extensions;
+  extension matching is a heuristic, not codec inspection.
+- Failed AVFoundation playback offers a retry with libmpv.
+- libmpv uses MPVCore, an MPVGLView rendering surface and FFmpeg; playback
+  controls include seeking, double-tap skip, scaling, speed, tracks,
+  external subtitles, adjustable subtitle delay and a VideoToolbox or
+  software decoder preference for subsequent sessions.
+- Changing backend recreates its playback session. On locally imported
+  media the shared watch-history store can restore playback position.
 
-## Limitations and next work
+## Outstanding compatibility and redistribution work
 
-- Native PiP in Apple's and Vidrane's AVFoundation UIs is present. libmpv
-  PiP needs a separate sample-buffer renderer and is NOT implemented here.
-- The optional MPVKit backend's source and binary were obtained from a
-  third-party open-source project; passing iOS compilation does not prove
-  playback of every Matroska, Dolby, DTS or HDR format.
-- The prebuilt libmpv bundle includes transitive libraries and codecs. Their
-  licenses are not covered by Vidrane's MIT license. Before redistribution,
-  review whether the particular binary enables GPL components and determine
-  the corresponding source, notices and relinking obligations. Do not claim
-  that open-source publication alone removes codec patents or third-party
-  licensing duties.
-- The experimental binary variant is not auto-signed; release to users
-  should follow both device testing and the license audit.
+libmpv performance, VideoToolbox compatibility, audio output, HDR and real
+codec support have not yet been verified on a physical iPhone. libmpv PiP
+is not implemented; native AVFoundation PiP remains available.
+
+The upstream prebuilt library and its transitive dependencies are under
+their own licenses, independently of Vidrane's MIT source license.
+Before distributing signed public builds, audit the actual upstream build,
+its FFmpeg/libmpv configuration, transitive LGPL/GPL requirements, source
+offer, notices and any applicable codec patent obligations. A successful
+CI build does not satisfy these requirements by itself.

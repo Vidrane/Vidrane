@@ -1,22 +1,29 @@
-# Playback engine architecture
+# Media engine architecture
 
-Vidrane has a native iOS AVFoundation decoder and two possible presentations
-for it: the default Vidrane Player UI and the optional Apple system UI.
+Both libmpv/FFmpeg and AVFoundation are included in the **main iOS
+Personal and Developer builds**. There is no separate experimental flavor
+and no feature-tier difference between signing profiles.
 
-The Rust shared core defines an explicit selection policy, which never
-treats an absent backend as available. In the native iOS app, only
-AVFoundation is compiled. An experimental separate iOS build now compiles
-a real libmpv backend (using MPVKit) if the pinned framework and sources
-are prepared correctly. See [experimental iOS libmpv](MPV_IOS.md).
+AVFoundation supports two UI presentations: default Vidrane controls and
+optional Apple system AVPlayerViewController controls. A real MPVKit
+adapter provides separate libmpv decoding with MPVGLView rendering.
 
-The libmpv variant has its own MPVCore lifecycle and MPVGLView rendering
-surface, rather than reusing AVPlayer and pretending to extend codecs.
-Settings expose automatic/native/libmpv preference only when available.
-The app displays AVFoundation errors and offers a manual libmpv fallback.
+The Rust shared core contains backend-selection policy, while the iOS
+presentation host currently chooses an initial backend using user preference
+and extension heuristics. A declared extension does not guarantee support
+for its codec. A native playback failure offers libmpv retry.
 
-Do not equate an extension such as .mkv with guaranteed codec compatibility;
-automatic routing starts from a heuristic and actual success depends on
-the decoder, device and content. PiP is not yet implemented for libmpv.
+Apple UI only works with AVPlayer. If the default Apple UI is selected and
+decoder preference is automatic, the app starts native playback. Explicit
+libmpv preference uses custom Vidrane libmpv controls.
 
-The optional prebuilt dependency has independent GPL/LGPL source and binary
-license obligations that require a pre-distribution audit.
+Within libmpv sessions Vidrane exposes playback speed, audio and subtitle
+tracks, external text subtitle files, seek gestures, scale controls,
+subtitle timing, and hardware VideoToolbox or software decoder preference.
+Some operations use MPVCore and do not share the same player object as
+AVFoundation. Watch history uses relative paths for local media.
+
+The libmpv binary is sourced from pinned MPVKit upstream release files,
+verified during CI. See [iOS build instructions](MPV_IOS.md).
+Real-device playback, PiP, codec coverage and third-party license compliance
+are not yet fully verified.

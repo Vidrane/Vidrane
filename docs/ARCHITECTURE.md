@@ -1,32 +1,32 @@
 # Vidrane architecture
 
-Vidrane is a free, open-source player with no subscriptions, paid tiers or
-deliberately restricted features. Apple Personal and Developer are
-provisioning profiles, not product versions.
+One free and open-source application, with no subscription and no
+Free/Lite/Plus functional tiers.
 
-## Core and platform integration
+## Core and platform boundaries
 
-Rust provides format categories, resume policies, subtitles, DAV XML,
-playback-engine selection, playlist and transfer-state rules through a C ABI.
-SwiftUI implements iOS navigation and platform services: AVFoundation,
-AVKit, Keychain, URLSession, WebKit and managed files.
+- Rust: media types, playlist and download state rules, playback resume
+  and decoder policy, subtitle parsing and DAV multistatus XML parsing.
+  Exposed to iOS over a C ABI.
+- iOS SwiftUI: app navigation, local Documents/Media tree, Keychain,
+  URLSession/WebDAV, WebKit, AVKit, AVFoundation and MPVKit.
+- Local media: nested folders with relative path identifiers. Moving
+  or renaming also rewrites playlist and watch-history references.
+- Network: HTTPS WebDAV with guarded read/write operations. Support for
+  SMB/SFTP and streaming from authenticated sources is planned.
+- Playback: Vidrane default UI plus optional Apple system controls for
+  AVPlayer/AVFoundation; a separate libmpv engine with its own rendering
+  lifecycle and custom Vidrane controls. Both engines are linked in the
+  standard iOS Personal and Developer builds.
+- Main iOS CI prepares a pinned libmpv XCFramework with SHA-256 checking,
+  then builds the same app code for both signing configurations.
 
-- Local files live in a nested Documents/Media directory tree. Identifiers
-  are relative paths; directory mutations update playlists/watch history.
-- The native Vidrane and Apple presentations share an AVPlayer instance.
-  Vidrane controls are the default; Apple is an optional UI mode.
-- The optional MPVKit backend uses libmpv and FFmpeg, separate rendering
-  and a separate decoder lifecycle. Switching engines recreates playback.
-- WebDAV uses Rust parsing and Swift HTTPS transport for PROPFIND, file
-  transfers and mutating operations, all scoped to one configured root.
-- Personal and Developer build targets contain the same functionality;
-  optional iOS entitlements require legitimate provisioning.
+## Restrictions and validation
 
-## Boundaries
+Apple-specific entitlements and signing are not bypassed. Native PiP
+availability depends on device/session; libmpv PiP is not implemented.
+No physical-device playback or compatibility testing has been performed.
+The nPlayer reference is design inspiration, not copied proprietary code.
 
-SMB/SFTP, robust background transfers, advanced audio/HDR features,
-libmpv PiP and other platform frontends are planned. Real-world codec
-support, file operations and WebDAV behavior need physical-device testing.
-
-No proprietary nPlayer code or graphics are distributed. MIT licensing
-for Vidrane does not waive upstream codec licenses or patent obligations.
+MIT licensing for Vidrane sources does not override upstream library,
+codec or patent obligations. See [MPV iOS](MPV_IOS.md).
