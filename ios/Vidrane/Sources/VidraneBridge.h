@@ -8,4 +8,5 @@ double vidrane_resume_position(double position, double duration);
 bool vidrane_playback_finished(double position, double duration);
 char *vidrane_subtitles_parse_json(const uint8_t *input, uintptr_t len);
 void vidrane_subtitles_free_json(char *json);
+uint8_t vidrane_choose_decoder(uint8_t preference, bool native_ready, bool libmpv_ready);
 #endif

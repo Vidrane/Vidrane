@@ -1,5 +1,6 @@
 //! Stable C ABI consumed by native presentation layers.
 use std::ffi::{c_char, CStr, CString};
+use vidrane_core::media_engine::{choose, BackendProbe, EnginePreference};
 use vidrane_core::MediaKind;
 
 #[no_mangle]
@@ -61,6 +62,30 @@ pub unsafe extern "C" fn vidrane_subtitles_free_json(ptr: *mut c_char) {
     if !ptr.is_null() {
         drop(CString::from_raw(ptr));
     }
+}
+
+/// Query shared backend selection. Engine IDs: 0=none, 1=native, 2=libmpv.
+/// Preference: 0=automatic, 1=native-only, 2=libmpv-only.
+/// The host MUST supply truthful runtime availability probes.
+#[no_mangle]
+pub extern "C" fn vidrane_choose_decoder(
+    preference: u8,
+    native_ready: bool,
+    libmpv_ready: bool,
+) -> u8 {
+    let preference = match preference {
+        0 => EnginePreference::Automatic,
+        1 => EnginePreference::NativeOnly,
+        2 => EnginePreference::LibmpvOnly,
+        _ => return 0,
+    };
+    choose(
+        preference,
+        BackendProbe {
+            native_ready,
+            libmpv_ready,
+        },
+    ) as u8
 }
 
 #[cfg(test)]
