@@ -6,3 +6,7 @@
 *.ipa
 *.app
 .env
+
+# Optional pinned libmpv checkout and XcodeGen variant
+/vendor/libmpv-ios/
+/ios/Vidrane/project-mpv.generated.yml
