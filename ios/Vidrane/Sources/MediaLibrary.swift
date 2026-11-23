@@ -25,17 +25,22 @@ enum VidraneMediaKind: Int {
 
 struct LocalMedia: Identifiable, Hashable {
     let url: URL
+    let relativePath: String
     let kind: VidraneMediaKind
+    let isDirectory: Bool
     let bytes: Int64
     let modified: Date?
 
-    var id: String { url.lastPathComponent }
+    var id: String { relativePath }
     var name: String { url.lastPathComponent }
+    var symbol: String { isDirectory ? "folder.fill" : kind.symbol }
 }
 
 struct StoredPlaylist: Identifiable, Codable {
     var id: UUID = UUID()
     var name: String
+    /// Relative to Documents/Media, for stable nested-folder references.
+    /// Flat names from older releases remain identical.
     var files: [String] = []
 }
 
@@ -45,6 +50,21 @@ struct PlaybackRequest: Identifiable {
     let title: String
 }
 
+enum LocalFileError: LocalizedError {
+    case invalidName
+    case invalidLocation
+    case targetExists
+    case sameFolder
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidName: return "Недопустимое имя. Уберите разделители пути и скрытые имена."
+        case .invalidLocation: return "Операция разрешена только внутри медиатеки Vidrane."
+        case .targetExists: return "Файл или папка с таким названием уже существует."
+        case .sameFolder: return "Нельзя поместить папку внутрь самой себя."
+        }
+    }
+}
 
 @MainActor
 final class MediaLibrary: ObservableObject {
@@ -58,56 +78,136 @@ final class MediaLibrary: ObservableObject {
     private var documents: URL {
         fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
-    private var mediaDirectory: URL {
+
+    var rootDirectory: URL {
         documents.appendingPathComponent("Media", isDirectory: true)
     }
+
     private var playlistsFile: URL {
         documents.appendingPathComponent("playlists.json")
     }
 
     init() {
-        do { try fm.createDirectory(at: mediaDirectory, withIntermediateDirectories: true) }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            try fm.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         restorePlaylists()
         refreshFiles()
     }
 
-    func refreshFiles() {
-        do {
-            let urls = try fm.contentsOfDirectory(at: mediaDirectory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
-            files = urls.filter { !$0.hasDirectoryPath }
-                .map { url -> LocalMedia in
-                    let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-                    return LocalMedia(
-                        url: url,
-                        kind: VidraneMediaKind(filename: url.lastPathComponent),
-                        bytes: Int64(values?.fileSize ?? 0),
-                        modified: values?.contentModificationDate
-                    )
-                }
-                .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        } catch {
-            errorMessage = "Не удалось прочитать папку: \(error.localizedDescription)"
+    /// Resolve only lexical children of Media; never permit operations on
+    /// an arbitrary file selected outside the sandbox.
+    func relativePath(for url: URL) -> String? {
+        let root = rootDirectory.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(root + "/") else { return nil }
+        let relative = String(path.dropFirst(root.count + 1))
+        guard !relative.isEmpty else { return nil }
+        return relative
+    }
+
+    func isValidFolder(_ folder: URL) -> Bool {
+        let root = rootDirectory.standardizedFileURL
+        let candidate = folder.standardizedFileURL
+        guard candidate == root || relativePath(for: candidate) != nil else { return false }
+        guard let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
+              values.isDirectory == true, values.isSymbolicLink != true else {
+            return false
+        }
+        return true
+    }
+
+    func entries(in folder: URL) -> [LocalMedia] {
+        guard isValidFolder(folder) else { return [] }
+        return files.filter {
+            $0.url.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL
         }
     }
 
-    private func uniqueDestination(for name: String) -> URL {
-        var destination = mediaDirectory.appendingPathComponent(name)
-        guard fm.fileExists(atPath: destination.path) else { return destination }
-        let original = (name as NSString).deletingPathExtension
-        let suffix = (name as NSString).pathExtension
-        let newName = original + "-" + String(UUID().uuidString.prefix(8)) + (suffix.isEmpty ? "" : "." + suffix)
-        destination = mediaDirectory.appendingPathComponent(newName)
-        return destination
+    var folders: [LocalMedia] { files.filter(\.isDirectory) }
+
+    func refreshFiles() {
+        do {
+            guard let enumerator = fm.enumerator(
+                at: rootDirectory,
+                includingPropertiesForKeys: [
+                    .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey,
+                    .contentModificationDateKey
+                ],
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else {
+                files = []
+                return
+            }
+            var found: [LocalMedia] = []
+            while let url = enumerator.nextObject() as? URL {
+                guard let relative = relativePath(for: url) else { continue }
+                let values = try? url.resourceValues(forKeys: [
+                    .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey,
+                    .contentModificationDateKey
+                ])
+                if values?.isSymbolicLink == true {
+                    enumerator.skipDescendants()
+                    continue
+                }
+                found.append(LocalMedia(
+                    url: url,
+                    relativePath: relative,
+                    kind: VidraneMediaKind(filename: url.lastPathComponent),
+                    isDirectory: values?.isDirectory == true,
+                    bytes: Int64(values?.fileSize ?? 0),
+                    modified: values?.contentModificationDate
+                ))
+            }
+            files = found.sorted {
+                $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending
+            }
+        } catch {
+            errorMessage = "Не удалось прочитать медиатеку: \(error.localizedDescription)"
+        }
     }
 
-    func importFiles(_ urls: [URL]) {
+    private func validName(_ raw: String) -> String? {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != ".", name != "..",
+              !name.hasPrefix("."),
+              !name.contains("/"), !name.contains("\\"),
+              !name.contains("\0") else { return nil }
+        return name
+    }
+
+    private func destination(for name: String, in folder: URL, unique: Bool) throws -> URL {
+        guard isValidFolder(folder) else { throw LocalFileError.invalidLocation }
+        guard let safe = validName(name) else { throw LocalFileError.invalidName }
+        let target = folder.appendingPathComponent(safe)
+        if !fm.fileExists(atPath: target.path) { return target }
+        guard unique else { throw LocalFileError.targetExists }
+        let stem = (safe as NSString).deletingPathExtension
+        let ext = (safe as NSString).pathExtension
+        for number in 1...10_000 {
+            let candidateName = "\(stem) (\(number))" + (ext.isEmpty ? "" : ".\(ext)")
+            let candidate = folder.appendingPathComponent(candidateName)
+            if !fm.fileExists(atPath: candidate.path) { return candidate }
+        }
+        throw LocalFileError.targetExists
+    }
+
+    func importFiles(_ urls: [URL], to folder: URL? = nil) {
+        let folder = folder ?? rootDirectory
+        guard isValidFolder(folder) else {
+            errorMessage = LocalFileError.invalidLocation.localizedDescription
+            return
+        }
         for source in urls {
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
             do {
-                let destination = uniqueDestination(for: source.lastPathComponent)
-                try fm.copyItem(at: source, to: destination)
+                let target = try destination(
+                    for: source.lastPathComponent, in: folder, unique: true
+                )
+                try fm.copyItem(at: source, to: target)
             } catch {
                 errorMessage = "Ошибка импорта \(source.lastPathComponent): \(error.localizedDescription)"
             }
@@ -115,66 +215,121 @@ final class MediaLibrary: ObservableObject {
         refreshFiles()
     }
 
-    func delete(_ file: LocalMedia) {
+    func createFolder(named name: String, in folder: URL) {
         do {
-            try fm.removeItem(at: file.url)
-            WatchHistory.shared.remove(url: file.url)
-            for index in playlists.indices { playlists[index].files.removeAll { $0 == file.id } }
-            savePlaylists()
+            let target = try destination(for: name, in: folder, unique: false)
+            try fm.createDirectory(at: target, withIntermediateDirectories: false)
             refreshFiles()
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    /// Renames a file without changing its directory and keeps playlist IDs in sync.
-    func rename(_ file: LocalMedia, to enteredName: String) {
-        let name = enteredName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != ".", name != "..",
-              !name.hasPrefix("."), !name.contains("/"), !name.contains("\\") else {
-            errorMessage = "Недопустимое имя файла."
-            return
+    private func managedSource(_ file: LocalMedia) throws -> URL {
+        guard relativePath(for: file.url) != nil,
+              fm.fileExists(atPath: file.url.path) else {
+            throw LocalFileError.invalidLocation
         }
-        guard file.url.deletingLastPathComponent().standardizedFileURL == mediaDirectory.standardizedFileURL else {
-            errorMessage = "Переименование доступно только для локальных файлов."
-            return
+        return file.url
+    }
+
+    /// After a move/rename, migrate playlist and resume keys for an entire
+    /// subtree; legacy flat entries are valid relative paths.
+    private func rebaseReferences(from old: URL, to new: URL) {
+        guard let oldKey = relativePath(for: old),
+              let newKey = relativePath(for: new) else { return }
+        for index in playlists.indices {
+            playlists[index].files = playlists[index].files.map { value in
+                if value == oldKey { return newKey }
+                if value.hasPrefix(oldKey + "/") {
+                    return newKey + String(value.dropFirst(oldKey.count))
+                }
+                return value
+            }
         }
-        guard name != file.name else { return }
-        let destination = mediaDirectory.appendingPathComponent(name)
-        guard !fm.fileExists(atPath: destination.path) else {
-            errorMessage = "Файл с таким именем уже существует."
-            return
-        }
+        savePlaylists()
+        WatchHistory.shared.rebase(from: old, to: new)
+    }
+
+    func delete(_ file: LocalMedia) {
         do {
-            try fm.moveItem(at: file.url, to: destination)
-            WatchHistory.shared.rename(from: file.url, to: destination)
+            _ = try managedSource(file)
+            try fm.removeItem(at: file.url)
+            let prefix = file.id + "/"
             for index in playlists.indices {
-                playlists[index].files = playlists[index].files.map { $0 == file.id ? name : $0 }
+                playlists[index].files.removeAll {
+                    $0 == file.id || $0.hasPrefix(prefix)
+                }
             }
             savePlaylists()
+            WatchHistory.shared.removeTree(url: file.url)
             refreshFiles()
         } catch {
-            errorMessage = "Переименование не удалось: \(error.localizedDescription)"
+            errorMessage = error.localizedDescription
         }
     }
 
-    /// Takes ownership of a finished temporary download and adds it to the
-    /// local media library. WebDAV paths never become local filesystem paths.
+    func rename(_ file: LocalMedia, to enteredName: String) {
+        do {
+            _ = try managedSource(file)
+            guard let name = validName(enteredName) else {
+                throw LocalFileError.invalidName
+            }
+            if name == file.name { return }
+            let folder = file.url.deletingLastPathComponent()
+            let target = try destination(for: name, in: folder, unique: false)
+            try fm.moveItem(at: file.url, to: target)
+            rebaseReferences(from: file.url, to: target)
+            refreshFiles()
+        } catch {
+            errorMessage = "Переименование: \(error.localizedDescription)"
+        }
+    }
+
+    func relocate(_ file: LocalMedia, to folder: URL, copy: Bool) {
+        do {
+            let source = try managedSource(file)
+            guard isValidFolder(folder) else { throw LocalFileError.invalidLocation }
+            if file.isDirectory {
+                let original = source.standardizedFileURL.path
+                let targetFolder = folder.standardizedFileURL.path
+                if targetFolder == original || targetFolder.hasPrefix(original + "/") {
+                    throw LocalFileError.sameFolder
+                }
+            }
+            if source.deletingLastPathComponent().standardizedFileURL == folder.standardizedFileURL &&
+                !copy {
+                return
+            }
+            let target = try destination(for: file.name, in: folder, unique: copy)
+            if copy {
+                try fm.copyItem(at: source, to: target)
+            } else {
+                try fm.moveItem(at: source, to: target)
+                rebaseReferences(from: source, to: target)
+            }
+            refreshFiles()
+        } catch {
+            errorMessage = "\(copy ? "Копирование" : "Перемещение"): \(error.localizedDescription)"
+        }
+    }
+
+    /// Takes ownership of an already downloaded local temporary file.
     func importRemoteFile(at temporary: URL, filename: String) throws -> LocalMedia {
         let safeName = (filename as NSString).lastPathComponent
-        let name = safeName.isEmpty || safeName == "." || safeName == ".."
-            ? "remote-\(UUID().uuidString)" : safeName
-        let destination = uniqueDestination(for: name)
-        try fm.moveItem(at: temporary, to: destination)
+        let name = validName(safeName) ?? "remote-\(UUID().uuidString)"
+        let target = try destination(for: name, in: rootDirectory, unique: true)
+        try fm.moveItem(at: temporary, to: target)
         refreshFiles()
-        guard let file = files.first(where: { $0.url == destination }) else {
+        guard let relative = relativePath(for: target),
+              let file = files.first(where: { $0.id == relative }) else {
             throw CocoaError(.fileReadUnknown)
         }
         return file
     }
 
     func play(_ file: LocalMedia) {
-        guard file.kind.playable else {
+        guard !file.isDirectory, file.kind.playable else {
             errorMessage = "Для этого типа файла пока не реализован просмотр."
             return
         }
@@ -183,13 +338,17 @@ final class MediaLibrary: ObservableObject {
 
     func playRemote(_ address: String) {
         guard let url = verifiedURL(address) else { return }
-        playback = PlaybackRequest(url: url, title: url.lastPathComponent.isEmpty ? url.host ?? "Поток" : url.lastPathComponent)
+        playback = PlaybackRequest(
+            url: url,
+            title: url.lastPathComponent.isEmpty ? url.host ?? "Поток" : url.lastPathComponent
+        )
     }
 
     private func verifiedURL(_ address: String) -> URL? {
         guard let url = URL(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.scheme?.lowercased() == "https", url.host != nil else {
-            errorMessage = "На первом этапе поддерживаются прямые HTTPS-ссылки."
+              url.scheme?.lowercased() == "https",
+              url.host != nil, url.user == nil, url.password == nil else {
+            errorMessage = "Поддерживаются только HTTPS-ссылки без пароля внутри адреса."
             return nil
         }
         return url
@@ -221,11 +380,14 @@ final class MediaLibrary: ObservableObject {
     }
 
     func files(in playlist: StoredPlaylist) -> [LocalMedia] {
-        playlist.files.compactMap { name in files.first { $0.id == name } }
+        playlist.files.compactMap { identifier in
+            files.first { $0.id == identifier && !$0.isDirectory }
+        }
     }
 
     func add(_ file: LocalMedia, to id: UUID) {
-        guard let index = playlists.firstIndex(where: { $0.id == id }) else { return }
+        guard !file.isDirectory,
+              let index = playlists.firstIndex(where: { $0.id == id }) else { return }
         guard !playlists[index].files.contains(file.id) else { return }
         playlists[index].files.append(file.id)
         savePlaylists()
@@ -246,6 +408,8 @@ final class MediaLibrary: ObservableObject {
         do {
             let data = try JSONEncoder().encode(playlists)
             try data.write(to: playlistsFile, options: .atomic)
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

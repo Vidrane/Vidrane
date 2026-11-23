@@ -1,8 +1,6 @@
 import Foundation
 import SwiftUI
 
-/// Local-only playback checkpoints. No cloud account, analytics or server
-/// requests are involved. Entries are keyed by the unique imported filename.
 struct WatchCheckpoint: Codable {
     var seconds: Double
     var duration: Double
@@ -14,6 +12,8 @@ struct WatchCheckpoint: Codable {
     }
 }
 
+/// Watch history is keyed by a path relative to Documents/Media. Existing
+/// first-stage flat filename keys remain unchanged after this migration.
 @MainActor
 final class WatchHistory: ObservableObject {
     static let shared = WatchHistory()
@@ -21,15 +21,18 @@ final class WatchHistory: ObservableObject {
     @Published private(set) var checkpoints: [String: WatchCheckpoint] = [:]
 
     private let fileURL: URL
+    private let mediaRoot: URL
 
     private init() {
+        let documents = FileManager.default.urls(
+            for: .documentDirectory, in: .userDomainMask
+        )[0]
+        mediaRoot = documents.appendingPathComponent("Media", isDirectory: true)
         let directory = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
+            for: .applicationSupportDirectory, in: .userDomainMask
         )[0]
         try? FileManager.default.createDirectory(
-            at: directory,
-            withIntermediateDirectories: true
+            at: directory, withIntermediateDirectories: true
         )
         fileURL = directory.appendingPathComponent("watch-history.json")
         if let data = try? Data(contentsOf: fileURL),
@@ -40,27 +43,31 @@ final class WatchHistory: ObservableObject {
         }
     }
 
+    private func key(for url: URL) -> String? {
+        guard url.isFileURL else { return nil }
+        let root = mediaRoot.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        guard path.hasPrefix(root + "/") else { return nil }
+        return String(path.dropFirst(root.count + 1))
+    }
+
     func checkpoint(for url: URL) -> WatchCheckpoint? {
-        guard url.isFileURL,
-              let item = checkpoints[url.lastPathComponent],
+        guard let key = key(for: url),
+              let item = checkpoints[key],
               vidrane_resume_position(item.seconds, item.duration) > 0 else {
             return nil
         }
         return item
     }
 
-    /// Called periodically and when the player is dismissed.
-    /// Unknown durations and streams never create a local checkpoint.
     func record(url: URL, seconds: Double, duration: Double) {
-        guard url.isFileURL, seconds.isFinite, duration.isFinite, duration >= 30 else {
-            return
-        }
+        guard let key = key(for: url),
+              seconds.isFinite, duration.isFinite, duration >= 30 else { return }
         if vidrane_playback_finished(seconds, duration) {
             remove(url: url)
             return
         }
         guard vidrane_resume_position(seconds, duration) > 0 else { return }
-        let key = url.lastPathComponent
         checkpoints[key] = WatchCheckpoint(
             seconds: seconds, duration: duration, updatedAt: Date()
         )
@@ -68,19 +75,35 @@ final class WatchHistory: ObservableObject {
     }
 
     func remove(url: URL) {
-        guard url.isFileURL else { return }
-        if checkpoints.removeValue(forKey: url.lastPathComponent) != nil {
-            persist()
-        }
+        guard let key = key(for: url) else { return }
+        if checkpoints.removeValue(forKey: key) != nil { persist() }
     }
 
-    func rename(from source: URL, to destination: URL) {
-        guard source.isFileURL, destination.isFileURL,
-              source.lastPathComponent != destination.lastPathComponent,
-              let item = checkpoints.removeValue(forKey: source.lastPathComponent) else {
-            return
+    func removeTree(url: URL) {
+        guard let key = key(for: url) else { return }
+        let before = checkpoints.count
+        checkpoints = checkpoints.filter {
+            $0.key != key && !$0.key.hasPrefix(key + "/")
         }
-        checkpoints[destination.lastPathComponent] = item
+        if checkpoints.count != before { persist() }
+    }
+
+    /// Moves entire folders' checkpoints without confusing same-name media
+    /// residing in different directories.
+    func rebase(from source: URL, to destination: URL) {
+        guard let oldKey = key(for: source), let newKey = key(for: destination),
+              oldKey != newKey else { return }
+        var updated: [String: WatchCheckpoint] = [:]
+        for (key, checkpoint) in checkpoints {
+            if key == oldKey {
+                updated[newKey] = checkpoint
+            } else if key.hasPrefix(oldKey + "/") {
+                updated[newKey + String(key.dropFirst(oldKey.count))] = checkpoint
+            } else {
+                updated[key] = checkpoint
+            }
+        }
+        checkpoints = updated
         persist()
     }
 
@@ -94,7 +117,6 @@ final class WatchHistory: ObservableObject {
             let encoded = try JSONEncoder().encode(checkpoints)
             try encoded.write(to: fileURL, options: [.atomic])
         } catch {
-            // Keep in-memory checkpoints if the disk is unavailable.
             NSLog("Vidrane: could not save local watch history: %@", String(describing: error))
         }
     }
