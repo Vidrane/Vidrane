@@ -23,8 +23,10 @@ Not implemented:
   AVFoundation provides, or automatic codec failover. See ENGINE.md.
 - Advanced styled/bitmap subtitles, system PiP external captions. See
   SUBTITLES.md.
-- SMB/SFTP/FTP/WebDAV/NFS/DLNA network browsing.
-- Persistent background transfers with reliable resume and cancellation.
+- SMB/SFTP/FTP/NFS/DLNA network browsing. An iOS HTTPS WebDAV client now supports
+  folder navigation and authenticated downloads; real-server validation is pending.
+- Persistent background transfers and resumable offsets across restarts.
+  Foreground downloads now support progress, cancellation and retry.
 - Full nPlayer Plus parity; Android and desktop frontends.
 
 Validation:
@@ -32,3 +34,5 @@ Validation:
 - macOS GitHub Actions builds two unsigned iOS app variants.
 - Neither unsigned IPA can be installed without suitable code signing.
 - Physical-device testing of decoder, PiP and subtitle behavior is pending.
+
+Current network work: iOS WebDAV browsing, Keychain credentials, shared Rust DAV XML parsing, foreground transfer queue; see NETWORK.md. Testing on a physical device is intentionally deferred until broader basic feature coverage.

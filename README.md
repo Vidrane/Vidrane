@@ -56,3 +56,7 @@ Vidrane's custom interface is the default for fresh installations. In Settings â
 ## Subtitle and decoder roadmap
 
 Vidrane now parses external UTF-8 SRT and WebVTT in Rust, with on-screen captions on iOS. Playback still uses AVFoundation in both player interfaces; a Rust decoder routing policy is present, but libmpv/FFmpeg decoding is not integrated yet. See [subtitle support](docs/SUBTITLES.md) and [engine architecture](docs/ENGINE.md).
+
+## Network and transfers
+
+An iOS HTTPS WebDAV browser supports Basic authorization, folder navigation and importing remote files into local media. Direct HTTPS downloads and authenticated WebDAV downloads now share a foreground queue with progress, cancel and retry. For security details and limits see [network architecture](docs/NETWORK.md). WebDAV interoperability still needs live-server testing.
