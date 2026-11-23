@@ -1,5 +1,4 @@
 import Foundation
-import FoundationXML
 
 struct WebDAVEntry: Identifiable, Hashable {
     let url: URL
@@ -212,7 +211,11 @@ final class WebDAVClient {
 
     func list(directory: URL, access: WebDAVAccess) async throws -> [WebDAVEntry] {
         guard let root = access.server.root else { throw WebDAVError.invalidURL }
-        var request = try request(directory, access: access, method: "PROPFIND")
+        var canonicalDirectory = directory
+        if !canonicalDirectory.path.hasSuffix("/") {
+            canonicalDirectory.appendPathComponent("", isDirectory: true)
+        }
+        var request = try request(canonicalDirectory, access: access, method: "PROPFIND")
         request.setValue("1", forHTTPHeaderField: "Depth")
         request.setValue("text/xml; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = Data("""
@@ -229,9 +232,9 @@ final class WebDAVClient {
         let parsed = try WebDAVXMLParser().parse(data)
         return parsed.compactMap { item in
             guard let url = WebDAVURLPolicy.resolve(
-                href: item.href, directory: directory, root: root
+                href: item.href, directory: canonicalDirectory, root: root
             ),
-            WebDAVURLPolicy.isDirectChild(url, of: directory) else {
+            WebDAVURLPolicy.isDirectChild(url, of: canonicalDirectory) else {
                 return nil
             }
             let inferred = url.lastPathComponent.removingPercentEncoding ?? url.lastPathComponent

@@ -164,6 +164,21 @@ final class MediaLibrary: ObservableObject {
         }
     }
 
+    /// Takes ownership of a finished temporary download and adds it to the
+    /// local media library. WebDAV paths never become local filesystem paths.
+    func importRemoteFile(at temporary: URL, filename: String) throws -> LocalMedia {
+        let safeName = (filename as NSString).lastPathComponent
+        let name = safeName.isEmpty || safeName == "." || safeName == ".."
+            ? "remote-\(UUID().uuidString)" : safeName
+        let destination = uniqueDestination(for: name)
+        try fm.moveItem(at: temporary, to: destination)
+        refreshFiles()
+        guard let file = files.first(where: { $0.url == destination }) else {
+            throw CocoaError(.fileReadUnknown)
+        }
+        return file
+    }
+
     func play(_ file: LocalMedia) {
         guard file.kind.playable else {
             errorMessage = "Для этого типа файла пока не реализован просмотр."

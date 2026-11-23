@@ -20,6 +20,7 @@ enum VidraneStyle {
 
 struct AppRootView: View {
     @StateObject private var library = MediaLibrary()
+    @StateObject private var webdavStore = WebDAVStore.shared
 
     var body: some View {
         TabView {
@@ -39,6 +40,7 @@ struct AppRootView: View {
         .tint(VidraneStyle.accent)
         .preferredColorScheme(.dark)
         .environmentObject(library)
+        .environmentObject(webdavStore)
         .fullScreenCover(item: $library.playback) { request in
             PlaybackView(request: request)
         }
