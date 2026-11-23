@@ -17,6 +17,17 @@ pub extern "C" fn vidrane_api_version() -> u32 {
     1
 }
 
+/// The returned seconds are always 0 or a valid nonnegative position.
+#[no_mangle]
+pub extern "C" fn vidrane_resume_position(position: f64, duration: f64) -> f64 {
+    vidrane_core::watch_history::resume_position(position, duration)
+}
+
+#[no_mangle]
+pub extern "C" fn vidrane_playback_finished(position: f64, duration: f64) -> bool {
+    vidrane_core::watch_history::finished(position, duration)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

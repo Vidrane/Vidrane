@@ -3,6 +3,7 @@
 pub mod playlists;
 pub mod providers;
 pub mod transfers;
+pub mod watch_history;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
