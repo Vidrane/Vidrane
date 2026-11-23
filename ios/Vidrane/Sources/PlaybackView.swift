@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import Combine
+import UniformTypeIdentifiers
 
 struct PlaybackView: View {
     @Environment(\.dismiss) private var dismiss
@@ -9,6 +10,10 @@ struct PlaybackView: View {
     @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
+    @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
+    @AppStorage("subtitleBackground") private var subtitleBackground = true
+    @StateObject private var externalSubtitles = ExternalSubtitles()
+    @State private var importingExternalSubtitles = false
     @ObservedObject private var watchHistory = WatchHistory.shared
 
     let request: PlaybackRequest
@@ -47,6 +52,28 @@ struct PlaybackView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottom) {
+                if let subtitle = externalSubtitles.cue(at: elapsed) {
+                    Text(subtitle)
+                        .font(.system(size: subtitleFontSize, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.white)
+                        .shadow(color: .black, radius: 3)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background {
+                            if subtitleBackground {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.black.opacity(0.72))
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, selectedPresentation == .vidrane && showingControls ? 145 : 80)
+                        .allowsHitTesting(false)
+                        .accessibilityLabel(subtitle)
+                }
+            }
         }
         .background(.black)
         .onAppear(perform: start)
@@ -59,6 +86,30 @@ struct PlaybackView: View {
             watchHistory.remove(url: request.url)
         }
         .onDisappear(perform: stop)
+        .fileImporter(
+            isPresented: $importingExternalSubtitles,
+            allowedContentTypes: [.item]
+        ) { result in
+            switch result {
+            case .success(let url):
+                _ = externalSubtitles.load(url: url)
+            case .failure(let error):
+                externalSubtitles.errorMessage = error.localizedDescription
+            }
+        }
+        .alert(
+            "Внешние субтитры",
+            isPresented: Binding(
+                get: { externalSubtitles.errorMessage != nil },
+                set: { if !$0 { externalSubtitles.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                externalSubtitles.errorMessage = nil
+            }
+        } message: {
+            Text(externalSubtitles.errorMessage ?? "")
+        }
     }
 
     private var header: some View {
@@ -173,7 +224,7 @@ struct PlaybackView: View {
             .disabled(duration <= 0)
             .accessibilityLabel("Позиция воспроизведения")
 
-            HStack(spacing: 28) {
+            HStack(spacing: 14) {
                 Button { skip(seconds: -10) } label: {
                     Image(systemName: "gobackward.10")
                 }
@@ -299,10 +350,33 @@ struct PlaybackView: View {
                     Text("Нет встроенных субтитров")
                 }
             }
+            Section("Внешние субтитры SRT / WebVTT") {
+                Button {
+                    importingExternalSubtitles = true
+                } label: {
+                    Label("Выбрать файл…", systemImage: "doc.text")
+                }
+                if let filename = externalSubtitles.filename {
+                    Button {
+                        externalSubtitles.enabled.toggle()
+                    } label: {
+                        Label(
+                            externalSubtitles.enabled ? "Показывать: \(filename)" : "Включить: \(filename)",
+                            systemImage: externalSubtitles.enabled ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+                    Button(role: .destructive) {
+                        externalSubtitles.clear()
+                    } label: {
+                        Label("Отключить внешние", systemImage: "xmark.circle")
+                    }
+                } else {
+                    Text("Не выбраны")
+                }
+            }
         } label: {
             Image(systemName: "captions.bubble")
         }
-        .disabled(audioGroup == nil && subtitleGroup == nil)
         .accessibilityLabel("Дорожки и субтитры")
     }
 
@@ -314,6 +388,9 @@ struct PlaybackView: View {
         // for this playback session only.
         player.appliesMediaSelectionCriteriaAutomatically = false
         player.currentItem?.select(option, in: group)
+        if group === subtitleGroup && option != nil {
+            externalSubtitles.enabled = false
+        }
     }
 
     private func loadTracks(for item: AVPlayerItem) {
@@ -332,6 +409,7 @@ struct PlaybackView: View {
 
     private func start() {
         selectedPresentation = PlayerPresentation(rawValue: playerPresentation) ?? .vidrane
+        externalSubtitles.loadSidecar(for: request.url)
         let saved = resumePlayback ? watchHistory.checkpoint(for: request.url) : nil
         pendingResume = saved?.seconds ?? 0
         pendingDuration = saved?.duration ?? 0

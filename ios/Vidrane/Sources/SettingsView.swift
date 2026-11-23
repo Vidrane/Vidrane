@@ -7,6 +7,8 @@ struct SettingsView: View {
     @AppStorage("playerPresentation") private var playerPresentation = PlayerPresentation.vidrane.rawValue
     @AppStorage("resumePlayback") private var resumePlayback = true
     @AppStorage("videoScaling") private var videoScaling = VideoScaling.fit.rawValue
+    @AppStorage("subtitleFontSize") private var subtitleFontSize = 24.0
+    @AppStorage("subtitleBackground") private var subtitleBackground = true
     @State private var confirmingClearHistory = false
 
     private var signingProfile: String {
@@ -59,11 +61,25 @@ struct SettingsView: View {
                 Text("По умолчанию используется Vidrane Player. Здесь можно выбрать Apple Player для следующих воспроизведений. Переключение через меню «Плеер» во время просмотра действует только для текущего сеанса. Оба интерфейса используют AVFoundation, а системный PiP доступен в режиме Apple на совместимых устройствах.")
             }
 
+            Section("Внешние субтитры") {
+                Picker("Размер шрифта", selection: $subtitleFontSize) {
+                    Text("18 pt").tag(18.0)
+                    Text("22 pt").tag(22.0)
+                    Text("24 pt").tag(24.0)
+                    Text("28 pt").tag(28.0)
+                    Text("32 pt").tag(32.0)
+                }
+                Toggle("Затемнять фон текста", isOn: $subtitleBackground)
+                Text("Поддерживаются внешние UTF-8 SRT и WebVTT. Файл рядом с видео подхватывается автоматически, если совпадает основное имя. Внешние субтитры выводятся поверх видео, но не передаются в системный PiP.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 LabeledContent("Профиль сборки", value: signingProfile.capitalized)
                 LabeledContent("Rust ABI", value: String(vidrane_api_version()))
                 LabeledContent("Медиадвижок", value: "AVFoundation")
-                LabeledContent("PiP", value: "Apple Player / при поддержке iOS")
+                LabeledContent("PiP", value: "Apple и Vidrane / при поддержке iOS")
             } header: {
                 Text("Системные возможности")
             } footer: {
