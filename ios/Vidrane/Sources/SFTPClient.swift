@@ -240,15 +240,26 @@ final class SFTPReadHandle {
               count <= 64 * 1024, Int64(count) <= size - offset else {
             throw SFTPError.invalidPath
         }
-        try Task.checkCancellation()
-        let response = try await file.read(
-            from: UInt64(offset), length: UInt32(count)
-        )
-        try Task.checkCancellation()
-        guard response.readableBytes == count else {
-            throw SFTPError.incompleteTransfer
+        var output = Data()
+        output.reserveCapacity(count)
+        while output.count < count {
+            try Task.checkCancellation()
+            // Servers may respond with less than the requested length.
+            // The conservative block size also works with SFTP daemons
+            // that cap individual reads at 32 KiB.
+            let block = min(32_768, count - output.count)
+            let response = try await file.read(
+                from: UInt64(offset) + UInt64(output.count),
+                length: UInt32(block)
+            )
+            try Task.checkCancellation()
+            guard response.readableBytes > 0,
+                  response.readableBytes <= block else {
+                throw SFTPError.incompleteTransfer
+            }
+            output.append(contentsOf: response.readableBytesView)
         }
-        return Data(response.readableBytesView)
+        return output
     }
 
     func close() async {
