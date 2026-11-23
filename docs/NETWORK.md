@@ -1,4 +1,16 @@
-# WebDAV and transfers (iOS)
+# Network providers and transfers (iOS)
+
+## SFTP/SSH
+
+Initial SFTP support uses Citadel 0.11.0 and NIOSSH 0.3.2, with mandatory
+pinning of a verified SSH server public key, Keychain-backed passwords,
+root-confined directory navigation, 32 KiB chunked downloads/uploads,
+remote directory creation, and deletion of files or empty folders.
+There is no insecure accept-any-host-key mode.
+
+SFTP transfers are foreground operations outside the shared download
+queue. Direct SFTP video streaming and resumable transfers are not yet
+implemented. See [SFTP security and usage](SFTP.md).
 
 ## Implemented HTTP/DAV operations
 
@@ -41,7 +53,7 @@ headers; there is no universal guarantee or cross-server transaction.
 - Server-specific DAV behaviors can differ. These actions compile in CI
   but have not been tested against real WebDAV servers.
 - Remote delete can be permanent. No trash/recycle bin, versions or undo.
-- SMB, SFTP, NFS and DLNA are future providers.
+- SMB, NFS and DLNA are future providers; SFTP has partial functionality.
 
 ## Architecture
 

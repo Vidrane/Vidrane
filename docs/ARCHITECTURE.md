@@ -12,9 +12,12 @@ Free/Lite/Plus functional tiers.
   URLSession/WebDAV, WebKit, AVKit, AVFoundation and MPVKit.
 - Local media: nested folders with relative path identifiers. Moving
   or renaming also rewrites playlist and watch-history references.
+- Network: SFTP/SSH with strict trusted-host-key authentication, stored
+  Keychain passwords and canonical path confinement. Partial remote file
+  operations and bounded transfers are available.
 - Network: HTTPS WebDAV with guarded read/write operations and protected
   HTTP Range playback through AVAssetResourceLoader for native-supported
-  media. Rust validates Content-Range. SMB/SFTP and streaming via libmpv
+  media. Rust validates Content-Range. SMB and SFTP/libmpv streaming
   are planned.
 - Playback: Vidrane default UI plus optional Apple system controls for
   AVPlayer/AVFoundation; a separate libmpv engine with its own rendering

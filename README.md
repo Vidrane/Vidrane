@@ -21,6 +21,8 @@ libmpv/FFmpeg**. There is no extra premium, Lite or experimental IPA edition.
 - Six tabs: Local, Network, Playlists, Browser, Downloads and Settings.
 - Nested local files with import, rename, copy, move, delete, search, sort,
   filter, file details, share sheet and persistent playlists/watch history.
+- SFTP with verified SSH host keys, Keychain passwords, folder browsing,
+  chunked download/upload, mkdir and confirmed remote delete.
 - HTTPS WebDAV with Keychain-backed Basic auth, folder operations,
   remote file uploads, authenticated downloads and native-compatible
   byte-range streaming without full-file imports.
@@ -63,7 +65,8 @@ to install on a physical iPhone.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Implementation status](docs/PHASE1.md)
 - [Local files](docs/LOCAL_FILES.md)
-- [WebDAV](docs/NETWORK.md)
+- [WebDAV and SFTP](docs/NETWORK.md)
+- [SFTP setup and security](docs/SFTP.md)
 - [Subtitle support](docs/SUBTITLES.md)
 - [Media engines](docs/ENGINE.md)
 - [Pinned libmpv build and licensing](docs/MPV_IOS.md)

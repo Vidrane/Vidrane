@@ -1,7 +1,8 @@
 # SFTP/SSH support in Vidrane (initial iOS implementation)
 
 Vidrane's Network tab can add SFTP servers, browse remote directories
-and download files to the local media library. The SSH transport uses
+and download files to the local media library, create directories,
+upload files and remove files or empty directories. The SSH transport uses
 Citadel 0.11.0 / NIOSSH 0.3.2. Both signing configurations ship the
 same source and libraries; there is no paid SFTP tier.
 
@@ -48,7 +49,11 @@ the regular Vidrane decoder-selection policy.
 ## Not yet available
 
 - Streaming SFTP media directly to AVFoundation/libmpv.
-- Remote SFTP upload, deletion, rename, copy or directory creation.
+- SFTP remote rename, copy, recursive delete and advanced batch operations.
+- Upload uses SSH_FXF_EXCL: compliant servers refuse to overwrite existing
+  paths. Failed uploads may leave a partial file on the server.
+- Remote removal of a directory is non-recursive (empty folders only),
+  and the UI requires confirmation before any remote delete.
 - Private-key user authentication and passwordless login.
 - Progress, cancellation controls and durable resume in the shared
   download queue. The current browser shows a busy spinner.

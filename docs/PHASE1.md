@@ -19,6 +19,8 @@ Personal and Developer are Apple signing profiles, not app editions.
   for AVFoundation. Libmpv supplies additional subtitle format handling.
 - Nested local file manager: create/import/copy/move/rename/delete,
   share/search/sort/filter, path-stable playlists and watch history.
+- SFTP: SSH pinned host keys, Keychain credentials, nested directory
+  browsing, chunked file downloads/uploads, mkdir and guarded deletion.
 - WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
   MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads and native
   AVFoundation on-demand byte-range streaming for supported media.
@@ -31,7 +33,8 @@ Personal and Developer are Apple signing profiles, not app editions.
 - Hardware validation of native/libmpv playback, codecs, battery, audio,
   VideoToolbox, PiP, subtitles and all local file operations.
 - Real WebDAV integration tests (especially mutation/upload semantics).
-- SMB/CIFS, SFTP, FTP, NFS and DLNA/UPnP providers.
+- SMB/CIFS, FTP, NFS and DLNA/UPnP providers. SFTP still needs direct
+  media streaming, public-key login, resumable transfers and rename/copy.
 - Authenticated streaming for libmpv and broader media types such as MKV;
   native AVFoundation byte-range WebDAV streaming is implemented in source
   but still requires tests with real WebDAV servers.
