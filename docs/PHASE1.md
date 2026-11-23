@@ -20,7 +20,8 @@ Personal and Developer are Apple signing profiles, not app editions.
 - Nested local file manager: create/import/copy/move/rename/delete,
   share/search/sort/filter, path-stable playlists and watch history.
 - WebDAV browser: HTTPS Basic/Keychain, PROPFIND directory listing,
-  MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads.
+  MKCOL/MOVE/COPY/DELETE/PUT, authenticated downloads and native
+  AVFoundation on-demand byte-range streaming for supported media.
 - Foreground HTTPS/WebDAV transfers with progress, cancellation and retry.
 - Main GitHub Actions generates unsigned Personal and Developer IPAs with
   identical libmpv and AVFoundation support.
@@ -31,7 +32,9 @@ Personal and Developer are Apple signing profiles, not app editions.
   VideoToolbox, PiP, subtitles and all local file operations.
 - Real WebDAV integration tests (especially mutation/upload semantics).
 - SMB/CIFS, SFTP, FTP, NFS and DLNA/UPnP providers.
-- Authenticated remote streaming without a full local download.
+- Authenticated streaming for libmpv and broader media types such as MKV;
+  native AVFoundation byte-range WebDAV streaming is implemented in source
+  but still requires tests with real WebDAV servers.
 - Persistent background and resumable downloads, richer upload reporting.
 - libmpv PiP, video HDR/color/audio DSP features and source/license audit.
 - Batch file management, trash/undo, archive extraction, bookmarks.

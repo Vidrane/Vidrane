@@ -15,7 +15,10 @@ for its codec. A native playback failure offers libmpv retry.
 
 Apple UI only works with AVPlayer. If the default Apple UI is selected and
 decoder preference is automatic, the app starts native playback. Explicit
-libmpv preference uses custom Vidrane libmpv controls.
+libmpv preference uses custom Vidrane libmpv controls. For protected
+WebDAV streams the AVAssetResourceLoader transport is AVFoundation-only:
+those sessions override libmpv preference and disable an invalid
+libmpv fallback.
 
 Within libmpv sessions Vidrane exposes playback speed, audio and subtitle
 tracks, external text subtitle files, seek gestures, scale controls,

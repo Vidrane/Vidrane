@@ -22,7 +22,8 @@ libmpv/FFmpeg**. There is no extra premium, Lite or experimental IPA edition.
 - Nested local files with import, rename, copy, move, delete, search, sort,
   filter, file details, share sheet and persistent playlists/watch history.
 - HTTPS WebDAV with Keychain-backed Basic auth, folder operations,
-  remote file uploads and authenticated downloads.
+  remote file uploads, authenticated downloads and native-compatible
+  byte-range streaming without full-file imports.
 - A foreground download queue with progress, cancellation and retries.
 
 ## Architecture
