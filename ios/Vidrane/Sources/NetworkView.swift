@@ -3,6 +3,7 @@ import SwiftUI
 struct NetworkView: View {
     @EnvironmentObject private var library: MediaLibrary
     @EnvironmentObject private var webdav: WebDAVStore
+    @EnvironmentObject private var transfers: TransferCenter
     @State private var directURL = ""
     @State private var addingWebDAV = false
 
@@ -178,7 +179,7 @@ struct WebDAVFolderView: View {
     @State private var entries: [WebDAVEntry] = []
     @State private var loading = false
     @State private var errorText: String?
-    @State private var downloading: Set<String> = []
+
 
     var body: some View {
         List {
@@ -208,13 +209,13 @@ struct WebDAVFolderView: View {
                 } else {
                     Menu {
                         Button {
-                            Task { await transfer(entry, play: false) }
+                            transfer(entry, play: false)
                         } label: {
                             Label("Скачать в медиатеку", systemImage: "arrow.down.circle")
                         }
                         if VidraneMediaKind(filename: entry.name).playable {
                             Button {
-                                Task { await transfer(entry, play: true) }
+                                transfer(entry, play: true)
                             } label: {
                                 Label("Скачать и воспроизвести", systemImage: "play.circle")
                             }
@@ -234,7 +235,7 @@ struct WebDAVFolderView: View {
                                 }
                             }
                             Spacer()
-                            if downloading.contains(entry.id) {
+                            if transfers.isDownloading(entry.url) {
                                 ProgressView()
                             } else {
                                 Image(systemName: "ellipsis.circle")
@@ -242,7 +243,7 @@ struct WebDAVFolderView: View {
                             }
                         }
                     }
-                    .disabled(downloading.contains(entry.id))
+                    .disabled(transfers.isDownloading(entry.url))
                 }
             }
         }
@@ -284,23 +285,16 @@ struct WebDAVFolderView: View {
         }
     }
 
-    private func transfer(_ entry: WebDAVEntry, play: Bool) async {
-        guard !downloading.contains(entry.id) else { return }
-        downloading.insert(entry.id)
-        defer { downloading.remove(entry.id) }
-        var temporary: URL?
-        defer {
-            if let temporary {
-                try? FileManager.default.removeItem(at: temporary)
-            }
-        }
+    private func transfer(_ entry: WebDAVEntry, play: Bool) {
         do {
             let access = try webdav.access(server)
-            temporary = try await WebDAVClient.shared.download(file: entry.url, access: access)
-            guard let temp = temporary else { throw WebDAVError.invalidResponse }
-            let local = try library.importRemoteFile(at: temp, filename: entry.name)
-            temporary = nil
-            if play { library.play(local) }
+            try transfers.enqueue(
+                url: entry.url,
+                filename: entry.name,
+                authorization: access.authorizationHeader,
+                playWhenFinished: play,
+                library: library
+            )
         } catch {
             errorText = error.localizedDescription
         }

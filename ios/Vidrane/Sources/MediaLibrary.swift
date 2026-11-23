@@ -45,17 +45,11 @@ struct PlaybackRequest: Identifiable {
     let title: String
 }
 
-struct DownloadItem: Identifiable {
-    let id = UUID()
-    let name: String
-    var status: String
-}
 
 @MainActor
 final class MediaLibrary: ObservableObject {
     @Published private(set) var files: [LocalMedia] = []
     @Published private(set) var playlists: [StoredPlaylist] = []
-    @Published private(set) var downloads: [DownloadItem] = []
     @Published var playback: PlaybackRequest?
     @Published var errorMessage: String?
 
@@ -203,28 +197,15 @@ final class MediaLibrary: ObservableObject {
 
     func download(_ address: String) {
         guard let url = verifiedURL(address) else { return }
-        let record = DownloadItem(name: url.lastPathComponent.isEmpty ? "media" : url.lastPathComponent, status: "Загрузка")
-        downloads.insert(record, at: 0)
-        Task {
-            do {
-                let (temporary, response) = try await URLSession.shared.download(from: url)
-                if let response = response as? HTTPURLResponse, !(200...299).contains(response.statusCode) {
-                    throw URLError(.badServerResponse)
-                }
-                let destination = uniqueDestination(for: record.name)
-                try fm.moveItem(at: temporary, to: destination)
-                updateDownload(id: record.id, status: "Готово")
-                refreshFiles()
-            } catch {
-                updateDownload(id: record.id, status: "Ошибка")
-                errorMessage = "Не удалось скачать файл: \(error.localizedDescription)"
-            }
+        do {
+            try TransferCenter.shared.enqueue(
+                url: url,
+                filename: url.lastPathComponent.isEmpty ? "download" : url.lastPathComponent,
+                library: self
+            )
+        } catch {
+            errorMessage = error.localizedDescription
         }
-    }
-
-    private func updateDownload(id: UUID, status: String) {
-        guard let index = downloads.firstIndex(where: { $0.id == id }) else { return }
-        downloads[index].status = status
     }
 
     func createPlaylist(name: String) {
