@@ -3,13 +3,14 @@ import SwiftUI
 struct NetworkView: View {
     @EnvironmentObject private var library: MediaLibrary
     @EnvironmentObject private var webdav: WebDAVStore
+    @EnvironmentObject private var sftpStore: SFTPStore
     @EnvironmentObject private var transfers: TransferCenter
     @State private var directURL = ""
     @State private var addingWebDAV = false
+    @State private var addingSFTP = false
 
     private let planned: [(String, String)] = [
         ("SMB / CIFS", "Подключение к сетевым папкам"),
-        ("SFTP / FTP", "Серверы и защищённый файловый доступ"),
         ("NFS", "Сетевые файловые системы"),
         ("DLNA / UPnP", "Обнаружение медиасерверов")
     ]
@@ -79,6 +80,40 @@ struct NetworkView: View {
                 Text("WebDAV поддерживает защищённые HTTPS-подключения, загрузку и просмотр MP4/MOV/M4V и совместимого аудио по HTTP Range без сохранения файла. Для серверов без Range остаётся скачивание.")
             }
 
+            Section {
+                ForEach(sftpStore.servers) { server in
+                    NavigationLink {
+                        SFTPBrowserView(server: server, directory: server.rootPath)
+                    } label: {
+                        Label {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(server.title)
+                                Text("\(server.username)@\(server.host):\(server.port)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } icon: {
+                            Image(systemName: "lock.shield")
+                                .foregroundStyle(VidraneStyle.accent)
+                        }
+                    }
+                    .swipeActions {
+                        Button(role: .destructive) { sftpStore.remove(server) } label: {
+                            Label("Удалить", systemImage: "trash")
+                        }
+                    }
+                }
+                Button {
+                    addingSFTP = true
+                } label: {
+                    Label("Добавить SFTP", systemImage: "plus")
+                }
+            } header: {
+                Text("SFTP / SSH")
+            } footer: {
+                Text("SSH-ключ сервера должен быть проверен и указан заранее. Пароль хранится в Keychain.")
+            }
+
             Section("Другие протоколы — в разработке") {
                 ForEach(planned.indices, id: \.self) { index in
                     let (title, description) = planned[index]
@@ -104,6 +139,11 @@ struct NetworkView: View {
         .sheet(isPresented: $addingWebDAV) {
             NavigationStack {
                 WebDAVAddView()
+            }
+        }
+        .sheet(isPresented: $addingSFTP) {
+            NavigationStack {
+                SFTPAddView()
             }
         }
     }
