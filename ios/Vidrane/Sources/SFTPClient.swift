@@ -188,7 +188,10 @@ final class SFTPConnection {
     /// Read bounded chunks directly into an app-private temporary file.
     /// No entire video is held in memory, and cancellation checks run
     /// between SFTP reads. The caller must move or remove the temp file.
-    func download(_ entry: SFTPEntry) async throws -> URL {
+    func download(
+        _ entry: SFTPEntry,
+        progress: @escaping (Int64, Int64?) -> Void = { _, _ in }
+    ) async throws -> URL {
         guard !entry.isDirectory else { throw SFTPError.unsupportedEntry }
         let path = try await resolved(entry.path)
         let remote = try await sftp.openFile(filePath: path, flags: .read)
@@ -200,14 +203,24 @@ final class SFTPConnection {
             defer { try? output.close() }
             let attributes = try await remote.readAttributes()
             var offset: UInt64 = 0
+            let total = attributes.size.flatMap(Int64.init(exactly:))
+            var lastUpdate = Date.distantPast
+            progress(0, total)
             while true {
                 try Task.checkCancellation()
                 let chunk = try await remote.read(from: offset, length: 32_768)
                 guard chunk.readableBytes > 0 else { break }
                 try output.write(contentsOf: Data(chunk.readableBytesView))
                 offset += UInt64(chunk.readableBytes)
+                let now = Date()
+                if now.timeIntervalSince(lastUpdate) > 0.25 {
+                    progress(Int64(offset), total)
+                    lastUpdate = now
+                }
                 if let expected = attributes.size, offset >= expected { break }
             }
+            try Task.checkCancellation()
+            progress(Int64(offset), total)
             if let expected = attributes.size, offset != expected {
                 throw SFTPError.incompleteTransfer
             }
