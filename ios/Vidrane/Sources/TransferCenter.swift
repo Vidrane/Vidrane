@@ -275,7 +275,8 @@ final class TransferCenter: ObservableObject {
         let generation = UUID()
         context.generation = generation
         context.task = Task { [weak self] in
-            await self?.performSFTP(id, generation: generation)
+            guard let self else { return }
+            await self.performSFTP(id, generation: generation)
         }
     }
 
