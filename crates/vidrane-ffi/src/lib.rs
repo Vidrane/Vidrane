@@ -35,10 +35,7 @@ pub extern "C" fn vidrane_playback_finished(position: f64, duration: f64) -> boo
 /// # Safety
 /// input must point to a readable contiguous region of len bytes.
 #[no_mangle]
-pub unsafe extern "C" fn vidrane_subtitles_parse_json(
-    input: *const u8,
-    len: usize,
-) -> *mut c_char {
+pub unsafe extern "C" fn vidrane_subtitles_parse_json(input: *const u8, len: usize) -> *mut c_char {
     const MAX_BYTES: usize = 8 * 1024 * 1024;
     if input.is_null() || len == 0 || len > MAX_BYTES {
         return std::ptr::null_mut();

@@ -23,9 +23,12 @@ pub fn parse(input: &str) -> Vec<SubtitleCue> {
             continue;
         };
         let first = first.trim_start();
-        if first == "WEBVTT" || first.starts_with("WEBVTT ")
-            || first == "NOTE" || first.starts_with("NOTE ")
-            || first == "STYLE" || first == "REGION"
+        if first == "WEBVTT"
+            || first.starts_with("WEBVTT ")
+            || first == "NOTE"
+            || first.starts_with("NOTE ")
+            || first == "STYLE"
+            || first == "REGION"
         {
             continue;
         }
@@ -67,31 +70,39 @@ pub fn parse(input: &str) -> Vec<SubtitleCue> {
 fn parse_time(raw: &str) -> Option<u64> {
     let raw = raw.replace(',', ".");
     let (whole, fraction) = raw.split_once('.')?;
-    if fraction.is_empty() || fraction.len() > 3
+    if fraction.is_empty()
+        || fraction.len() > 3
         || !fraction.bytes().all(|byte| byte.is_ascii_digit())
     {
         return None;
     }
     let chunks: Vec<&str> = whole.split(':').collect();
     if !(2..=3).contains(&chunks.len())
-        || chunks.iter().any(|part| part.is_empty()
-            || !part.bytes().all(|byte| byte.is_ascii_digit()))
+        || chunks
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
     {
         return None;
     }
     let (hours, minutes, seconds) = if chunks.len() == 3 {
-        (chunks[0].parse::<u64>().ok()?,
-         chunks[1].parse::<u64>().ok()?,
-         chunks[2].parse::<u64>().ok()?)
+        (
+            chunks[0].parse::<u64>().ok()?,
+            chunks[1].parse::<u64>().ok()?,
+            chunks[2].parse::<u64>().ok()?,
+        )
     } else {
-        (0, chunks[0].parse::<u64>().ok()?, chunks[1].parse::<u64>().ok()?)
+        (
+            0,
+            chunks[0].parse::<u64>().ok()?,
+            chunks[1].parse::<u64>().ok()?,
+        )
     };
     if seconds >= 60 || (chunks.len() == 3 && minutes >= 60) {
         return None;
     }
-    let fraction = fraction.parse::<u64>().ok()?
-        * 10_u64.pow((3 - fraction.len()) as u32);
-    hours.checked_mul(3_600_000)?
+    let fraction = fraction.parse::<u64>().ok()? * 10_u64.pow((3 - fraction.len()) as u32);
+    hours
+        .checked_mul(3_600_000)?
         .checked_add(minutes.checked_mul(60_000)?)?
         .checked_add(seconds.checked_mul(1_000)?)?
         .checked_add(fraction)
@@ -128,9 +139,14 @@ mod tests {
         let data = "\u{feff}1\r\n00:00:01,230 --> 00:00:03,500\r\n<b>Hello &amp; welcome</b>\r\n\r\n2\r\n00:00:04,0 --> 00:00:05,20\r\nSecond\r\nline\r\n";
         let cues = parse(data);
         assert_eq!(cues.len(), 2);
-        assert_eq!(cues[0], SubtitleCue {
-            start_ms: 1230, end_ms: 3500, text: "Hello & welcome".to_string()
-        });
+        assert_eq!(
+            cues[0],
+            SubtitleCue {
+                start_ms: 1230,
+                end_ms: 3500,
+                text: "Hello & welcome".to_string()
+            }
+        );
         assert_eq!(cues[1].end_ms, 5020);
         assert_eq!(cues[1].text, "Second\nline");
     }
