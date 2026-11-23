@@ -16,11 +16,13 @@ final class SFTPConnection {
     private let ssh: SSHClient
     private let sftp: Citadel.SFTPClient
     private let canonicalRoot: String
+    private let declaredRoot: String
 
-    private init(ssh: SSHClient, sftp: Citadel.SFTPClient, canonicalRoot: String) {
+    private init(ssh: SSHClient, sftp: Citadel.SFTPClient, canonicalRoot: String, declaredRoot: String) {
         self.ssh = ssh
         self.sftp = sftp
         self.canonicalRoot = canonicalRoot
+        self.declaredRoot = declaredRoot
     }
 
     static func connect(server: SFTPServer, password: String) async throws -> SFTPConnection {
@@ -43,7 +45,10 @@ final class SFTPConnection {
                 let root = try SFTPPathPolicy.normalize(
                     try await sftp.getRealPath(atPath: server.rootPath)
                 )
-                return SFTPConnection(ssh: ssh, sftp: sftp, canonicalRoot: root)
+                return SFTPConnection(
+                    ssh: ssh, sftp: sftp, canonicalRoot: root,
+                    declaredRoot: server.rootPath
+                )
             } catch {
                 try? await sftp.close()
                 throw error
@@ -61,7 +66,7 @@ final class SFTPConnection {
 
     private func resolved(_ path: String) async throws -> String {
         let normalized = try SFTPPathPolicy.normalize(path)
-        guard SFTPPathPolicy.inside(normalized, root: canonicalRoot) else {
+        guard SFTPPathPolicy.inside(normalized, root: declaredRoot) else {
             throw SFTPError.escapedRoot
         }
         let real = try SFTPPathPolicy.normalize(
@@ -74,13 +79,13 @@ final class SFTPConnection {
     }
 
     func list(directory: String) async throws -> [SFTPEntry] {
-        let directory = try await resolved(directory)
-        let batches = try await sftp.listDirectory(atPath: directory)
+        let realDirectory = try await resolved(directory)
+        let batches = try await sftp.listDirectory(atPath: realDirectory)
         var entries: [SFTPEntry] = []
         for component in batches.flatMap(\.components) {
             let name = component.filename
             guard let path = try? SFTPPathPolicy.child(
-                name, in: directory, root: canonicalRoot
+                name, in: directory, root: declaredRoot
             ) else { continue }
 
             let type = component.attributes.permissions.map { $0 & 0o170000 }
