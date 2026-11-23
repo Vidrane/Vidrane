@@ -5,6 +5,7 @@ pub mod playlists;
 pub mod providers;
 pub mod subtitles;
 pub mod transfers;
+pub mod webdav;
 pub mod watch_history;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

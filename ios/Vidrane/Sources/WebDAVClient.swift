@@ -124,60 +124,37 @@ private final class WebDAVRedirectBlocker: NSObject, URLSessionTaskDelegate {
     }
 }
 
-private final class WebDAVXMLParser: NSObject, XMLParserDelegate {
-    struct RawEntry {
-        var href = ""
-        var displayName = ""
-        var directory = false
-        var length: Int64?
+private struct DavParsedEntry: Decodable {
+    let href: String
+    let displayName: String
+    let isDirectory: Bool
+    let size: UInt64?
+
+    enum CodingKeys: String, CodingKey {
+        case href
+        case displayName = "display_name"
+        case isDirectory = "is_directory"
+        case size
     }
+}
 
-    private(set) var responses: [RawEntry] = []
-    private var entry: RawEntry?
-    private var activeElement = ""
-    private var body = ""
-    private var insideResourceType = false
-
-    func parser(_ parser: XMLParser, didStartElement elementName: String,
-                namespaceURI: String?, qualifiedName qName: String?,
-                attributes attributeDict: [String : String] = [:]) {
-        let name = elementName.split(separator: ":").last.map(String.init)?.lowercased() ?? ""
-        if name == "response" { entry = RawEntry() }
-        if name == "resourcetype" { insideResourceType = true }
-        if name == "collection" && insideResourceType { entry?.directory = true }
-        activeElement = name
-        body = ""
+private func decodeDAVMultistatus(_ data: Data) throws -> [DavParsedEntry] {
+    guard !data.isEmpty && data.count <= 8 * 1024 * 1024 else {
+        throw WebDAVError.fileTooLarge
     }
-
-    func parser(_ parser: XMLParser, foundCharacters string: String) {
-        body += string
-    }
-
-    func parser(_ parser: XMLParser, didEndElement elementName: String,
-                namespaceURI: String?, qualifiedName qName: String?) {
-        let name = elementName.split(separator: ":").last.map(String.init)?.lowercased() ?? ""
-        if name == "href" { entry?.href = body.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if name == "displayname" { entry?.displayName = body.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if name == "getcontentlength" {
-            entry?.length = Int64(body.trimmingCharacters(in: .whitespacesAndNewlines))
+    let entries: [DavParsedEntry]? = data.withUnsafeBytes { bytes in
+        guard let pointer = bytes.bindMemory(to: UInt8.self).baseAddress,
+              let result = vidrane_webdav_parse_json(pointer, UInt(data.count)) else {
+            return nil
         }
-        if name == "resourcetype" { insideResourceType = false }
-        if name == "response", let finished = entry {
-            responses.append(finished)
-            entry = nil
-        }
-        activeElement = ""
-        body = ""
+        defer { vidrane_webdav_free_json(result) }
+        return try? JSONDecoder().decode(
+            [DavParsedEntry].self,
+            from: Data(String(cString: result).utf8)
+        )
     }
-
-    func parse(_ data: Data) throws -> [RawEntry] {
-        let parser = XMLParser(data: data)
-        parser.shouldProcessNamespaces = false
-        parser.shouldResolveExternalEntities = false
-        parser.delegate = self
-        guard parser.parse() else { throw WebDAVError.invalidResponse }
-        return responses
-    }
+    guard let entries else { throw WebDAVError.invalidResponse }
+    return entries
 }
 
 final class WebDAVClient {
@@ -229,7 +206,7 @@ final class WebDAVClient {
         )
         try check(response, allowed: [207])
         guard data.count < 8 * 1024 * 1024 else { throw WebDAVError.fileTooLarge }
-        let parsed = try WebDAVXMLParser().parse(data)
+        let parsed = try decodeDAVMultistatus(data)
         return parsed.compactMap { item in
             guard let url = WebDAVURLPolicy.resolve(
                 href: item.href, directory: canonicalDirectory, root: root
@@ -241,8 +218,8 @@ final class WebDAVClient {
             return WebDAVEntry(
                 url: url,
                 name: item.displayName.isEmpty ? inferred : item.displayName,
-                isDirectory: item.directory,
-                size: item.length
+                isDirectory: item.isDirectory,
+                size: item.size.flatMap(Int64.init(exactly:))
             )
         }
         .sorted {

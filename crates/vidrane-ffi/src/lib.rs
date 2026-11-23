@@ -88,6 +88,39 @@ pub extern "C" fn vidrane_choose_decoder(
     ) as u8
 }
 
+/// Decode UTF-8 WebDAV XML into JSON. Caller must free the returned string.
+///
+/// # Safety
+/// input points to a valid region of len bytes.
+#[no_mangle]
+pub unsafe extern "C" fn vidrane_webdav_parse_json(input: *const u8, len: usize) -> *mut c_char {
+    if input.is_null() || len == 0 || len > 8 * 1024 * 1024 {
+        return std::ptr::null_mut();
+    }
+    let bytes = std::slice::from_raw_parts(input, len);
+    let Ok(xml) = std::str::from_utf8(bytes) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(entries) = vidrane_core::webdav::parse_multistatus(xml) else {
+        return std::ptr::null_mut();
+    };
+    let Ok(json) = serde_json::to_string(&entries) else {
+        return std::ptr::null_mut();
+    };
+    CString::new(json)
+        .map(CString::into_raw)
+        .unwrap_or(std::ptr::null_mut())
+}
+
+/// # Safety
+/// ptr was returned by vidrane_webdav_parse_json and has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn vidrane_webdav_free_json(ptr: *mut c_char) {
+    if !ptr.is_null() {
+        drop(CString::from_raw(ptr));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
