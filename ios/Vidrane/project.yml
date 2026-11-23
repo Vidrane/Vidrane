@@ -3,6 +3,9 @@ options:
   bundleIdPrefix: org.vidrane
   deploymentTarget:
     iOS: "16.0"
+packages:
+  MPVKit:
+    path: ../../vendor/libmpv-ios/MPVKit
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -30,6 +33,9 @@ targetTemplates:
         OTHER_LDFLAGS:
           - "$(inherited)"
           - "-lvidrane_ffi"
+    dependencies:
+      - package: MPVKit
+        product: MPVKit
     preBuildScripts:
       - name: Build Rust static library
         basedOnDependencyAnalysis: false

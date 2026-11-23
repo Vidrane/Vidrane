@@ -15,7 +15,9 @@ jobs:
           targets: aarch64-apple-ios
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Generate Xcode project
+      - name: Prepare pinned libmpv/FFmpeg for main build
+        run: bash ios/mpv/prepare.sh
+      - name: Generate Xcode project with MPVKit
         working-directory: ios/Vidrane
         run: xcodegen generate
       - name: Build iPhone application (unsigned)

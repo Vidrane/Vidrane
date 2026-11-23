@@ -35,28 +35,4 @@ if [[ ! -f "$FRAMEWORK/Info.plist" ]]; then
   exit 1
 fi
 
-python3 - "$ROOT" <<'PY'
-import pathlib
-import sys
-
-root = pathlib.Path(sys.argv[1])
-project = root / "ios/Vidrane/project.yml"
-out = root / "ios/Vidrane/project-mpv.generated.yml"
-text = project.read_text()
-assert text.count("settings:\n  base:") == 1
-assert text.count("    preBuildScripts:") == 1
-text = text.replace(
-    "settings:\n  base:",
-    "packages:\n  MPVKit:\n    path: ../../vendor/libmpv-ios/MPVKit\nsettings:\n  base:",
-    1,
-)
-text = text.replace(
-    "    preBuildScripts:",
-    "    dependencies:\n      - package: MPVKit\n        product: MPVKit\n    preBuildScripts:",
-    1,
-)
-out.write_text(text)
-print(f"Generated {out}")
-PY
-
-echo "Prepared MPVKit ${RELEASE}, pinned source ${SOURCE_SHA}"
+echo "Prepared main build MPVKit ${RELEASE} from ${SOURCE_SHA}"
