@@ -16,6 +16,7 @@ struct PlaybackView: View {
     // The same AVPlayer instance is retained when the interface changes,
     // preserving the stream, timestamp and current play/pause state.
     @State private var player = AVPlayer()
+    @State private var pictureInPicture = VidranePictureInPicture()
     @State private var selectedPresentation: PlayerPresentation = .vidrane
     @State private var elapsed = 0.0
     @State private var duration = 0.0
@@ -108,7 +109,8 @@ struct PlaybackView: View {
             GeometryReader { dimensions in
                 VidraneVideoSurface(
                     player: player,
-                    gravity: (VideoScaling(rawValue: videoScaling) ?? .fit).gravity
+                    gravity: (VideoScaling(rawValue: videoScaling) ?? .fit).gravity,
+                    pictureInPicture: pictureInPicture
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -204,6 +206,16 @@ struct PlaybackView: View {
                         .font(.footnote.monospacedDigit())
                 }
                 .accessibilityLabel("Скорость воспроизведения")
+
+                if pictureInPicture.supported {
+                    Button {
+                        pictureInPicture.start()
+                    } label: {
+                        Image(systemName: "pip.enter")
+                    }
+                    .disabled(!pictureInPicture.possible)
+                    .accessibilityLabel("Картинка в картинке")
+                }
 
                 mediaTracksMenu
 

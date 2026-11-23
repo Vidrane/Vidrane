@@ -57,12 +57,16 @@ enum VideoScaling: String, CaseIterable, Identifiable {
 struct VidraneVideoSurface: UIViewRepresentable {
     let player: AVPlayer
     let gravity: AVLayerVideoGravity
+    let pictureInPicture: VidranePictureInPicture
+
+    func makeCoordinator() -> VidranePictureInPicture { pictureInPicture }
 
     func makeUIView(context: Context) -> VidraneVideoLayerView {
         let view = VidraneVideoLayerView()
         view.backgroundColor = .black
         view.videoLayer.videoGravity = gravity
         view.videoLayer.player = player
+        context.coordinator.attach(layer: view.videoLayer)
         return view
     }
 
@@ -73,6 +77,14 @@ struct VidraneVideoSurface: UIViewRepresentable {
         if view.videoLayer.videoGravity != gravity {
             view.videoLayer.videoGravity = gravity
         }
+        context.coordinator.attach(layer: view.videoLayer)
+    }
+
+    static func dismantleUIView(
+        _ view: VidraneVideoLayerView,
+        coordinator: VidranePictureInPicture
+    ) {
+        coordinator.detach(layer: view.videoLayer)
     }
 }
 
