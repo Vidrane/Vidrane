@@ -2,6 +2,7 @@
 
 pub mod playlists;
 pub mod providers;
+pub mod subtitles;
 pub mod transfers;
 pub mod watch_history;
 

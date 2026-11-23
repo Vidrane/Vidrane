@@ -6,4 +6,6 @@ uint32_t vidrane_media_kind(const char *filename);
 uint32_t vidrane_api_version(void);
 double vidrane_resume_position(double position, double duration);
 bool vidrane_playback_finished(double position, double duration);
+char *vidrane_subtitles_parse_json(const uint8_t *input, uintptr_t len);
+void vidrane_subtitles_free_json(char *json);
 #endif
