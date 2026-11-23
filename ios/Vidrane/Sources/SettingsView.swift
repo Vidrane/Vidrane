@@ -79,6 +79,7 @@ struct SettingsView: View {
                 LabeledContent("Профиль сборки", value: signingProfile.capitalized)
                 LabeledContent("Rust ABI", value: String(vidrane_api_version()))
                 LabeledContent("Медиадвижок", value: "AVFoundation")
+                LabeledContent("FFmpeg / libmpv", value: "Пока не подключён")
                 LabeledContent("PiP", value: "Apple и Vidrane / при поддержке iOS")
             } header: {
                 Text("Системные возможности")

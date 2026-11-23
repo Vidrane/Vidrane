@@ -29,6 +29,7 @@ struct PlaybackView: View {
     @State private var previewTime = 0.0
     @State private var playing = false
     @State private var showingControls = true
+    @State private var playbackError: String?
     @State private var pendingResume = 0.0
     @State private var pendingDuration = 0.0
     @State private var waitingToResume = false
@@ -52,6 +53,26 @@ struct PlaybackView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                if let playbackError {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 30))
+                        Text("Не удалось воспроизвести файл")
+                            .font(.headline)
+                        Text(playbackError)
+                            .font(.caption)
+                            .multilineTextAlignment(.center)
+                        Text("Vidrane пока использует AVFoundation. Дополнительные декодеры FFmpeg/libmpv ещё не подключены.")
+                            .font(.caption2)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(20)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    .padding(22)
+                    .allowsHitTesting(false)
+                }
+            }
             .overlay(alignment: .bottom) {
                 if let subtitle = externalSubtitles.cue(at: elapsed) {
                     Text(subtitle)
@@ -416,6 +437,7 @@ struct PlaybackView: View {
         waitingToResume = pendingResume > 0
         seekingToResume = false
         lastCheckpointAt = Date()
+        playbackError = nil
         let item = AVPlayerItem(url: request.url)
         player.replaceCurrentItem(with: item)
         loadTracks(for: item)
@@ -445,6 +467,12 @@ struct PlaybackView: View {
 
     private func updateProgress() {
         guard let item = player.currentItem else { return }
+        if item.status == .failed || player.status == .failed {
+            playbackError = item.error?.localizedDescription
+                ?? player.error?.localizedDescription
+                ?? "Формат, кодек или источник недоступен системному плееру."
+            return
+        }
 
         // Wait until the AVPlayerItem is ready before seeking. Never let the
         // initial 0:00 playback overwrite the previous saved checkpoint.
