@@ -1,5 +1,11 @@
 import SwiftUI
 
+// libmpv is mandatory in both main iOS signing configurations. This must
+// be a build failure, not a silent fallback that ships AVFoundation-only.
+#if !canImport(MPVKit)
+#error("Main Vidrane iOS builds must link MPVKit/libmpv. Run ios/mpv/prepare.sh before generating the Xcode project.")
+#endif
+
 /// Decoder selection is independent of the appearance of playback controls.
 enum DecoderPreference: String, CaseIterable, Identifiable {
     case automatic
