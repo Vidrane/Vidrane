@@ -116,20 +116,15 @@ final class MediaLibrary: ObservableObject {
     /// Resolve only lexical children of Media; never permit operations on
     /// an arbitrary file selected outside the sandbox.
     func relativePath(for url: URL) -> String? {
-        let root = rootDirectory.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(root + "/") else { return nil }
-        let relative = String(path.dropFirst(root.count + 1))
-        guard !relative.isEmpty else { return nil }
-        return relative
+        ManagedMediaPath.relative(url, to: rootDirectory)
     }
 
     func isValidFolder(_ folder: URL) -> Bool {
         let root = rootDirectory.standardizedFileURL
         let candidate = folder.standardizedFileURL
-        guard candidate == root || relativePath(for: candidate) != nil else { return false }
-        guard let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]),
-              values.isDirectory == true, values.isSymbolicLink != true else {
+        guard ManagedMediaPath.isSafeExistingItem(candidate, in: root, allowRoot: true),
+              let values = try? candidate.resourceValues(forKeys: [.isDirectoryKey]),
+              values.isDirectory == true else {
             return false
         }
         return true
@@ -186,12 +181,7 @@ final class MediaLibrary: ObservableObject {
     }
 
     private func validName(_ raw: String) -> String? {
-        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty, name != ".", name != "..",
-              !name.hasPrefix("."),
-              !name.contains("/"), !name.contains("\\"),
-              !name.contains("\0") else { return nil }
-        return name
+        ManagedMediaPath.validName(raw)
     }
 
     private func destination(for name: String, in folder: URL, unique: Bool) throws -> URL {
@@ -242,8 +232,7 @@ final class MediaLibrary: ObservableObject {
     }
 
     private func managedSource(_ file: LocalMedia) throws -> URL {
-        guard relativePath(for: file.url) != nil,
-              fm.fileExists(atPath: file.url.path) else {
+        guard ManagedMediaPath.isSafeExistingItem(file.url, in: rootDirectory) else {
             throw LocalFileError.invalidLocation
         }
         return file.url
@@ -256,11 +245,7 @@ final class MediaLibrary: ObservableObject {
               let newKey = relativePath(for: new) else { return }
         for index in playlists.indices {
             playlists[index].files = playlists[index].files.map { value in
-                if value == oldKey { return newKey }
-                if value.hasPrefix(oldKey + "/") {
-                    return newKey + String(value.dropFirst(oldKey.count))
-                }
-                return value
+                ManagedMediaPath.rebased(value, from: oldKey, to: newKey)
             }
         }
         savePlaylists()
@@ -271,10 +256,9 @@ final class MediaLibrary: ObservableObject {
         do {
             _ = try managedSource(file)
             try fm.removeItem(at: file.url)
-            let prefix = file.id + "/"
             for index in playlists.indices {
                 playlists[index].files.removeAll {
-                    $0 == file.id || $0.hasPrefix(prefix)
+                    ManagedMediaPath.contains($0, under: file.id)
                 }
             }
             savePlaylists()

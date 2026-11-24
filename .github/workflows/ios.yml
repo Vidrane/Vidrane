@@ -19,6 +19,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+      - name: Swift Foundation policy checks
+        if: matrix.profile == 'Personal'
+        run: |
+          swiftc ios/Vidrane/Sources/ManagedMediaPath.swift tests/ManagedMediaPathSmoke.swift -o /tmp/vidrane-path-smoke
+          /tmp/vidrane-path-smoke
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Prepare pinned libmpv/FFmpeg for main build

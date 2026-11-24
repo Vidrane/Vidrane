@@ -44,11 +44,7 @@ final class WatchHistory: ObservableObject {
     }
 
     private func key(for url: URL) -> String? {
-        guard url.isFileURL else { return nil }
-        let root = mediaRoot.standardizedFileURL.path
-        let path = url.standardizedFileURL.path
-        guard path.hasPrefix(root + "/") else { return nil }
-        return String(path.dropFirst(root.count + 1))
+        ManagedMediaPath.relative(url, to: mediaRoot)
     }
 
     func checkpoint(for url: URL) -> WatchCheckpoint? {
@@ -83,7 +79,7 @@ final class WatchHistory: ObservableObject {
         guard let key = key(for: url) else { return }
         let before = checkpoints.count
         checkpoints = checkpoints.filter {
-            $0.key != key && !$0.key.hasPrefix(key + "/")
+            !ManagedMediaPath.contains($0.key, under: key)
         }
         if checkpoints.count != before { persist() }
     }
@@ -95,13 +91,7 @@ final class WatchHistory: ObservableObject {
               oldKey != newKey else { return }
         var updated: [String: WatchCheckpoint] = [:]
         for (key, checkpoint) in checkpoints {
-            if key == oldKey {
-                updated[newKey] = checkpoint
-            } else if key.hasPrefix(oldKey + "/") {
-                updated[newKey + String(key.dropFirst(oldKey.count))] = checkpoint
-            } else {
-                updated[key] = checkpoint
-            }
+            updated[ManagedMediaPath.rebased(key, from: oldKey, to: newKey)] = checkpoint
         }
         checkpoints = updated
         persist()
