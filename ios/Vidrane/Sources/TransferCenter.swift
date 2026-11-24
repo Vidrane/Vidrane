@@ -544,20 +544,10 @@ final class TransferCenter: ObservableObject {
     }
 
     private static func parseRange(_ header: String, offset: Int64) -> Int64? {
-        guard header.hasPrefix("bytes "), header.count < 128 else { return nil }
-        let pair = header.dropFirst(6).split(
-            separator: "/", omittingEmptySubsequences: false
-        )
-        guard pair.count == 2, let total = UInt64(pair[1]),
-              total <= UInt64(Int64.max) else { return nil }
-        let ends = pair[0].split(separator: "-", omittingEmptySubsequences: false)
-        guard ends.count == 2,
-              let end = UInt64(ends[1]) else { return nil }
-        return header.withCString {
-            vidrane_content_range_total(
-                $0, UInt64(offset), end, total
-            ) == total ? Int64(total) : nil
-        }
+        guard offset >= 0 else { return nil }
+        let total = header.withCString { vidrane_download_range_total($0, UInt64(offset)) }
+        guard total > 0, total <= UInt64(Int64.max) else { return nil }
+        return Int64(total)
     }
 
     private func persist(throttled: Bool = false) {

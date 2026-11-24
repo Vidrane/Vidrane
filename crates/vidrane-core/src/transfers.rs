@@ -69,6 +69,9 @@ impl Transfer {
         if self.state != TransferState::Running {
             return Err(TransferError::InvalidTransition);
         }
+        if self.total_bytes.is_some_and(|total| self.received_bytes != total) {
+            return Err(TransferError::InvalidByteCount);
+        }
         self.state = TransferState::Completed;
         Ok(())
     }
@@ -98,6 +101,17 @@ mod tests {
         transfer.progress(70).unwrap();
         transfer.complete().unwrap();
         assert_eq!(transfer.state, TransferState::Completed);
+    }
+
+    #[test]
+    fn completion_rejects_incomplete_known_length() {
+        let mut transfer = Transfer::new("download", Some(100));
+        transfer.start().unwrap();
+        transfer.progress(99).unwrap();
+        assert_eq!(transfer.complete(), Err(TransferError::InvalidByteCount));
+        assert_eq!(transfer.state, TransferState::Running);
+        transfer.progress(1).unwrap();
+        transfer.complete().unwrap();
     }
 
     #[test]

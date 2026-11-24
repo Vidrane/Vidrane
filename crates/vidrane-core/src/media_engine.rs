@@ -44,9 +44,28 @@ pub fn choose(preference: EnginePreference, available: BackendProbe) -> Decoder 
     }
 }
 
+/// Initial routing hint only: the platform must still probe actual codecs.
+/// Accept an extension, not a URL; caller decides which sources can use it.
+pub fn prefers_libmpv_extension(extension: &str) -> bool {
+    const CANDIDATES: &[&str] = &[
+        "mkv", "avi", "webm", "flv", "wmv", "ts", "m2ts", "ogg", "opus", "flac", "ape", "mka", "ogv",
+    ];
+    CANDIDATES
+        .iter()
+        .any(|item| item.eq_ignore_ascii_case(extension))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extension_hint_is_not_a_codec_probe() {
+        assert!(prefers_libmpv_extension("MKV"));
+        assert!(prefers_libmpv_extension("mka"));
+        assert!(!prefers_libmpv_extension("mp4"));
+        assert!(!prefers_libmpv_extension("https://example.org/movie.mkv"));
+    }
 
     #[test]
     fn automatic_prefers_native_and_falls_back() {

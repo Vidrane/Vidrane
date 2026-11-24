@@ -41,11 +41,9 @@ enum PlaybackDecoderAvailability {
         case .avFoundation: return false
         case .libmpv: return true
         case .automatic:
-            let mpvCandidates: Set<String> = [
-                "mkv", "avi", "webm", "flv", "wmv", "ts", "m2ts",
-                "ogg", "opus", "flac", "ape", "mka", "ogv"
-            ]
-            return url.isFileURL && mpvCandidates.contains(url.pathExtension.lowercased())
+            return url.isFileURL && url.pathExtension.withCString {
+                vidrane_prefers_libmpv_extension($0)
+            }
         }
     }
 }

@@ -1,5 +1,8 @@
 //! Source protocol registry. The registry distinguishes implemented providers
 //! from protocols reserved for future integration; there are no fake providers.
+//! This is the iOS reference frontend inventory, NOT a cross-platform
+//! availability or runtime compatibility probe. Rust owns the policy; the
+//! frontend owns authentication, transports and platform permissions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SourceProtocol {
     Local,
@@ -35,15 +38,15 @@ pub const PROVIDERS: [ProviderInfo; 8] = [
     },
     ProviderInfo {
         protocol: SourceProtocol::Smb,
-        implemented: false,
-        browsing: false,
-        streaming: false,
+        implemented: true,
+        browsing: true,
+        streaming: true,
     },
     ProviderInfo {
         protocol: SourceProtocol::Sftp,
-        implemented: false,
-        browsing: false,
-        streaming: false,
+        implemented: true,
+        browsing: true,
+        streaming: true,
     },
     ProviderInfo {
         protocol: SourceProtocol::Ftp,
@@ -53,9 +56,9 @@ pub const PROVIDERS: [ProviderInfo; 8] = [
     },
     ProviderInfo {
         protocol: SourceProtocol::WebDav,
-        implemented: false,
-        browsing: false,
-        streaming: false,
+        implemented: true,
+        browsing: true,
+        streaming: true,
     },
     ProviderInfo {
         protocol: SourceProtocol::Nfs,
@@ -86,7 +89,12 @@ mod tests {
     fn protocols_have_explicit_status() {
         assert!(provider(SourceProtocol::Local).browsing);
         assert!(provider(SourceProtocol::Https).streaming);
-        assert!(!provider(SourceProtocol::Sftp).implemented);
-        assert!(!provider(SourceProtocol::WebDav).implemented);
+        for protocol in [SourceProtocol::Sftp, SourceProtocol::WebDav, SourceProtocol::Smb] {
+            assert!(provider(protocol).implemented);
+            assert!(provider(protocol).browsing);
+        }
+        for protocol in [SourceProtocol::Ftp, SourceProtocol::Nfs, SourceProtocol::Upnp] {
+            assert!(!provider(protocol).implemented);
+        }
     }
 }

@@ -12,7 +12,7 @@ pub fn verify_content_range(
     expected_end: u64,
     expected_total: Option<u64>,
 ) -> Option<u64> {
-    if header.len() > 128 || expected_end < expected_start {
+    if header.len() > 128 || header.contains(['\r', '\n']) || expected_end < expected_start {
         return None;
     }
     let mut pieces = header.split_whitespace();
@@ -27,13 +27,13 @@ pub fn verify_content_range(
     if total.contains('/') {
         return None;
     }
-    let total = total.parse::<u64>().ok()?;
+    let total = decimal(total)?;
     let (start, end) = range.split_once('-')?;
     if start.contains('-') || end.contains('-') {
         return None;
     }
-    let start = start.parse::<u64>().ok()?;
-    let end = end.parse::<u64>().ok()?;
+    let start = decimal(start)?;
+    let end = decimal(end)?;
     if total == 0
         || start != expected_start
         || end != expected_end
@@ -46,9 +46,39 @@ pub fn verify_content_range(
     Some(total)
 }
 
+fn decimal(value: &str) -> Option<u64> {
+    if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    value.parse().ok()
+}
+
+/// Validate a 206 response to an open-ended bytes=offset- request.
+/// A complete-object download must end at total - 1; a shorter response
+/// is not treated as a complete object. No signed or wildcard lengths.
+pub fn verify_download_range(header: &str, offset: u64) -> Option<u64> {
+    if header.len() > 128 {
+        return None;
+    }
+    let (_, total) = header.split_once('/')?;
+    let total = decimal(total)?;
+    let end = total.checked_sub(1)?;
+    verify_content_range(header, offset, end, Some(total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_ended_download_requires_the_remaining_object() {
+        assert_eq!(verify_download_range("bytes 100-899/900", 100), Some(900));
+        assert_eq!(verify_download_range("bytes 100-199/900", 100), None);
+        assert_eq!(verify_download_range("bytes 99-899/900", 100), None);
+        assert_eq!(verify_download_range("bytes +100-899/900", 100), None);
+        assert_eq!(verify_download_range("bytes 100-899/900\r\n", 100), None);
+        assert_eq!(verify_download_range("bytes 0-0/0", 0), None);
+    }
 
     #[test]
     fn accepts_precise_partial_content() {

@@ -3,8 +3,10 @@ use std::ffi::{c_char, CStr, CString};
 use vidrane_core::media_engine::{choose, BackendProbe, EnginePreference};
 use vidrane_core::MediaKind;
 
+/// # Safety
+/// filename must be null or a readable NUL-terminated C string.
 #[no_mangle]
-pub extern "C" fn vidrane_media_kind(filename: *const c_char) -> u32 {
+pub unsafe extern "C" fn vidrane_media_kind(filename: *const c_char) -> u32 {
     if filename.is_null() {
         return MediaKind::Unknown as u32;
     }
@@ -149,6 +151,35 @@ pub unsafe extern "C" fn vidrane_content_range_total(
     .unwrap_or(0)
 }
 
+/// Initial local-media routing hint; does not probe codec support.
+///
+/// # Safety
+/// extension must be null or a readable NUL-terminated UTF-8 C string.
+#[no_mangle]
+pub unsafe extern "C" fn vidrane_prefers_libmpv_extension(extension: *const c_char) -> bool {
+    if extension.is_null() {
+        return false;
+    }
+    unsafe { CStr::from_ptr(extension) }
+        .to_str()
+        .is_ok_and(vidrane_core::media_engine::prefers_libmpv_extension)
+}
+
+/// Return the total length for a complete open-ended 206 download, or 0.
+///
+/// # Safety
+/// header must be null or a readable NUL-terminated UTF-8 C string.
+#[no_mangle]
+pub unsafe extern "C" fn vidrane_download_range_total(header: *const c_char, offset: u64) -> u64 {
+    if header.is_null() {
+        return 0;
+    }
+    let Ok(header) = unsafe { CStr::from_ptr(header) }.to_str() else {
+        return 0;
+    };
+    vidrane_core::http_range::verify_download_range(header, offset).unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,8 +187,8 @@ mod tests {
     #[test]
     fn ffi_inputs() {
         let name = CString::new("movie.MP4").unwrap();
-        assert_eq!(vidrane_media_kind(name.as_ptr()), 1);
-        assert_eq!(vidrane_media_kind(std::ptr::null()), 0);
+        assert_eq!(unsafe { vidrane_media_kind(name.as_ptr()) }, 1);
+        assert_eq!(unsafe { vidrane_media_kind(std::ptr::null()) }, 0);
         assert_eq!(vidrane_api_version(), 1);
     }
 

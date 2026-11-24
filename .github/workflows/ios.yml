@@ -1,5 +1,7 @@
 name: iOS unsigned builds
 on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
 concurrency:
   group: ios-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'push' }}
@@ -7,6 +9,7 @@ jobs:
   ios:
     name: ${{ matrix.profile }} device
     runs-on: macos-15
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:

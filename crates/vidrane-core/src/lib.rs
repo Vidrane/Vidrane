@@ -22,16 +22,19 @@ pub enum MediaKind {
 
 impl MediaKind {
     pub fn from_filename(filename: &str) -> Self {
-        let suffix = filename
-            .rsplit('.')
-            .next()
-            .unwrap_or("")
-            .to_ascii_lowercase();
+        let leaf = filename.rsplit(['/', '\\']).next().unwrap_or("");
+        let Some((stem, suffix)) = leaf.rsplit_once('.') else {
+            return Self::Unknown;
+        };
+        if stem.is_empty() {
+            return Self::Unknown;
+        }
+        let suffix = suffix.to_ascii_lowercase();
         match suffix.as_str() {
             "mp4" | "m4v" | "mov" | "mkv" | "avi" | "webm" | "wmv" | "ts" | "m2ts" | "mpg"
             | "mpeg" | "flv" | "3gp" | "ogv" => Self::Video,
             "mp3" | "aac" | "m4a" | "flac" | "wav" | "ogg" | "opus" | "aiff" | "alac" | "wma"
-            | "ape" => Self::Audio,
+            | "ape" | "mka" => Self::Audio,
             "srt" | "ass" | "ssa" | "vtt" | "sub" | "sup" => Self::Subtitle,
             "m3u" | "m3u8" | "pls" | "xspf" => Self::Playlist,
             "jpg" | "jpeg" | "png" | "gif" | "webp" | "heic" | "avif" => Self::Image,
@@ -94,6 +97,10 @@ mod tests {
         );
         assert_eq!(MediaKind::from_filename("poster.webp"), MediaKind::Image);
         assert_eq!(MediaKind::from_filename("unknown"), MediaKind::Unknown);
+        assert_eq!(MediaKind::from_filename("mp4"), MediaKind::Unknown);
+        assert_eq!(MediaKind::from_filename(".mp4"), MediaKind::Unknown);
+        assert_eq!(MediaKind::from_filename("folder.mp4/file"), MediaKind::Unknown);
+        assert_eq!(MediaKind::from_filename("track.mka"), MediaKind::Audio);
     }
     #[test]
     fn signing_profile_never_creates_premium_features() {

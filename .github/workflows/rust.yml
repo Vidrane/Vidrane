@@ -1,13 +1,26 @@
 name: Rust checks
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
+          components: rustfmt, clippy
       - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace --all-targets
       - run: cargo build --workspace --release
+      - name: Test linked native C ABI
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -I ios/Vidrane/Sources \
+            tests/ffi_smoke.c target/release/libvidrane_ffi.a \
+            -ldl -lpthread -lm -lrt -lutil -o /tmp/vidrane-ffi-smoke
+          /tmp/vidrane-ffi-smoke
