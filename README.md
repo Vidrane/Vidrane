@@ -36,7 +36,7 @@ default interface, and Apple system controls remain optional.
 - ios/Vidrane/Sources: SwiftUI, AVKit, MPVKit and network integration.
 - ios/mpv/prepare.sh: pinned MPVKit/libmpv XCFramework preparation.
 - .github/workflows/ios.yml: dual unsigned IPA build.
-- docs: architecture, networking, streaming, transfers and limitations.
+- docs: usage, networking, streaming, transfers, build and compatibility guides.
 
 ## Build
 
@@ -63,11 +63,6 @@ unsigned artifacts require legitimate signing/provisioning for a phone.
 
 ## Documentation
 
-- [Development roadmap and milestone checklist](docs/ROADMAP.md)
-- [nPlayer Plus feature parity matrix](docs/NPLAYER_PARITY.md)
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [Development status](docs/PHASE1.md)
 - [Local file manager](docs/LOCAL_FILES.md)
 - [Network providers](docs/NETWORK.md)
 - [SMB3](docs/SMB.md)
