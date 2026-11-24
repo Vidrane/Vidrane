@@ -48,7 +48,8 @@ pub fn choose(preference: EnginePreference, available: BackendProbe) -> Decoder 
 /// Accept an extension, not a URL; caller decides which sources can use it.
 pub fn prefers_libmpv_extension(extension: &str) -> bool {
     const CANDIDATES: &[&str] = &[
-        "mkv", "avi", "webm", "flv", "wmv", "ts", "m2ts", "ogg", "opus", "flac", "ape", "mka", "ogv",
+        "mkv", "avi", "webm", "flv", "wmv", "ts", "m2ts", "ogg", "opus", "flac", "ape", "mka",
+        "ogv",
     ];
     CANDIDATES
         .iter()

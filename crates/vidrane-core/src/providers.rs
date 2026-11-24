@@ -89,11 +89,19 @@ mod tests {
     fn protocols_have_explicit_status() {
         assert!(provider(SourceProtocol::Local).browsing);
         assert!(provider(SourceProtocol::Https).streaming);
-        for protocol in [SourceProtocol::Sftp, SourceProtocol::WebDav, SourceProtocol::Smb] {
+        for protocol in [
+            SourceProtocol::Sftp,
+            SourceProtocol::WebDav,
+            SourceProtocol::Smb,
+        ] {
             assert!(provider(protocol).implemented);
             assert!(provider(protocol).browsing);
         }
-        for protocol in [SourceProtocol::Ftp, SourceProtocol::Nfs, SourceProtocol::Upnp] {
+        for protocol in [
+            SourceProtocol::Ftp,
+            SourceProtocol::Nfs,
+            SourceProtocol::Upnp,
+        ] {
             assert!(!provider(protocol).implemented);
         }
     }

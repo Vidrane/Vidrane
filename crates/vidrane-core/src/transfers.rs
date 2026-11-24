@@ -69,7 +69,10 @@ impl Transfer {
         if self.state != TransferState::Running {
             return Err(TransferError::InvalidTransition);
         }
-        if self.total_bytes.is_some_and(|total| self.received_bytes != total) {
+        if self
+            .total_bytes
+            .is_some_and(|total| self.received_bytes != total)
+        {
             return Err(TransferError::InvalidByteCount);
         }
         self.state = TransferState::Completed;

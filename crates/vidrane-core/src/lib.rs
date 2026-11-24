@@ -99,7 +99,10 @@ mod tests {
         assert_eq!(MediaKind::from_filename("unknown"), MediaKind::Unknown);
         assert_eq!(MediaKind::from_filename("mp4"), MediaKind::Unknown);
         assert_eq!(MediaKind::from_filename(".mp4"), MediaKind::Unknown);
-        assert_eq!(MediaKind::from_filename("folder.mp4/file"), MediaKind::Unknown);
+        assert_eq!(
+            MediaKind::from_filename("folder.mp4/file"),
+            MediaKind::Unknown
+        );
         assert_eq!(MediaKind::from_filename("track.mka"), MediaKind::Audio);
     }
     #[test]
