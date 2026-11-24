@@ -184,7 +184,13 @@ private func decodeDAVMultistatus(_ data: Data) throws -> [DavParsedEntry] {
 
 final class WebDAVClient {
     static let shared = WebDAVClient()
-    private init() {}
+    private let session: URLSession
+
+    // Dependency injection keeps production TLS and redirect rules unchanged
+    // while allowing deterministic URLProtocol-based transport tests.
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
 
     private func request(_ url: URL, access: WebDAVAccess, method: String) throws -> URLRequest {
         guard let root = access.server.root,
@@ -226,7 +232,7 @@ final class WebDAVClient {
           <d:prop><d:resourcetype/><d:displayname/><d:getcontentlength/></d:prop>
         </d:propfind>
         """.utf8)
-        let (data, response) = try await URLSession.shared.data(
+        let (data, response) = try await session.data(
             for: request, delegate: WebDAVRedirectBlocker()
         )
         try check(response, allowed: [207])
@@ -254,7 +260,7 @@ final class WebDAVClient {
     }
 
     private func mutation(_ request: URLRequest, allowed: Set<Int>) async throws {
-        let (_, response) = try await URLSession.shared.data(
+        let (_, response) = try await session.data(
             for: request, delegate: WebDAVRedirectBlocker()
         )
         try check(response, allowed: allowed)
@@ -333,7 +339,7 @@ final class WebDAVClient {
         var request = try request(destination, access: access, method: "PUT")
         request.setValue("*", forHTTPHeaderField: "If-None-Match")
         request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (_, response) = try await URLSession.shared.upload(
+        let (_, response) = try await session.upload(
             for: request, fromFile: localURL, delegate: WebDAVRedirectBlocker()
         )
         try check(response, allowed: [201, 204])
@@ -344,7 +350,7 @@ final class WebDAVClient {
     /// rejected so that Basic credentials aren't forwarded elsewhere.
     func download(file: URL, access: WebDAVAccess) async throws -> URL {
         let request = try request(file, access: access, method: "GET")
-        let (temporary, response) = try await URLSession.shared.download(
+        let (temporary, response) = try await session.download(
             for: request, delegate: WebDAVRedirectBlocker()
         )
         try check(response, allowed: [200, 206])

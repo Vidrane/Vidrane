@@ -31,6 +31,14 @@ jobs:
           /tmp/vidrane-transfer-smoke
           swiftc ios/Vidrane/Sources/RemoteMediaSource.swift ios/Vidrane/Sources/MediaLoopbackRelay.swift tests/MediaLoopbackSmoke.swift -o /tmp/vidrane-relay-smoke
           /tmp/vidrane-relay-smoke
+      - name: WebDAV transport and Rust parser integration
+        if: matrix.profile == 'Personal'
+        run: |
+          cargo build --release -p vidrane-ffi
+          swiftc -import-objc-header ios/Vidrane/Sources/VidraneBridge.h \
+            ios/Vidrane/Sources/WebDAVClient.swift tests/WebDAVClientSmoke.swift \
+            -L target/release -lvidrane_ffi -liconv -o /tmp/vidrane-dav-smoke
+          /tmp/vidrane-dav-smoke
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Prepare pinned libmpv/FFmpeg for main build
