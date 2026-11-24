@@ -16,7 +16,14 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Generate original media fixtures
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          python3 tests/generate_media_fixtures.py target/media-fixtures
       - run: cargo test --workspace --all-targets
+        env:
+          VIDRANE_FIXTURES: ${{ github.workspace }}/target/media-fixtures
       - run: cargo build --workspace --release
       - name: Test linked native C ABI
         run: |

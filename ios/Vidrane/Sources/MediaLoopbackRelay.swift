@@ -175,6 +175,7 @@ final class MediaLoopbackRelay {
     }
 
     private func serve(_ connection: NWConnection) async {
+        var sentHeaders = false
         do {
             let header = try await receiveHeaders(connection)
             let lines = header.components(separatedBy: "\r\n")
@@ -233,6 +234,7 @@ final class MediaLoopbackRelay {
                 "\r\nAccept-Ranges: bytes\r\nContent-Length: \(size)" +
                 (partial ? "\r\nContent-Range: bytes \(start)-\(end)/\(length)" : "") +
                 "\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+            sentHeaders = true
             try await send(Data(head.utf8), to: connection)
             guard firstParts[0] == "GET" else { return }
 
@@ -246,7 +248,9 @@ final class MediaLoopbackRelay {
                 offset += Int64(count)
             }
         } catch {
-            await sendError(416, to: connection)
+            // After a successful header, a second HTTP response would be
+            // interpreted as media bytes. Close the truncated body instead.
+            if !sentHeaders { await sendError(416, to: connection) }
         }
     }
 

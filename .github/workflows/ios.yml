@@ -24,6 +24,13 @@ jobs:
         run: |
           swiftc ios/Vidrane/Sources/ManagedMediaPath.swift tests/ManagedMediaPathSmoke.swift -o /tmp/vidrane-path-smoke
           /tmp/vidrane-path-smoke
+      - name: Swift remote transfer and loopback integration
+        if: matrix.profile == 'Personal'
+        run: |
+          swiftc ios/Vidrane/Sources/RemoteTransferPolicy.swift tests/RemoteTransferSmoke.swift -o /tmp/vidrane-transfer-smoke
+          /tmp/vidrane-transfer-smoke
+          swiftc ios/Vidrane/Sources/RemoteMediaSource.swift ios/Vidrane/Sources/MediaLoopbackRelay.swift tests/MediaLoopbackSmoke.swift -o /tmp/vidrane-relay-smoke
+          /tmp/vidrane-relay-smoke
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Prepare pinned libmpv/FFmpeg for main build

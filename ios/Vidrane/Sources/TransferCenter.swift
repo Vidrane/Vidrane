@@ -338,23 +338,9 @@ final class TransferCenter: ObservableObject {
     private func verifiedOffset(
         _ id: UUID, expected: Int64, fetch: (Int64, Int) async throws -> Data
     ) async throws -> Int64 {
-        let current = actualPartSize(id)
-        guard current > 0 else { return 0 }
-        guard current <= expected, expected > 0 else {
-            try? fm.removeItem(at: partURL(id))
-            return 0
-        }
-        let count = Int(min(4096, current))
-        let file = try FileHandle(forReadingFrom: partURL(id))
-        defer { try? file.close() }
-        try file.seek(toOffset: UInt64(current - Int64(count)))
-        let local = try file.read(upToCount: count) ?? Data()
-        let remote = try await fetch(current - Int64(count), count)
-        if remote != local {
-            try? fm.removeItem(at: partURL(id))
-            return 0
-        }
-        return current
+        try await RemoteTransferPolicy.verifiedOffset(
+            partial: partURL(id), expected: expected, fetch: fetch
+        )
     }
 
     private func prepareOutput(_ id: UUID, offset: Int64) throws -> FileHandle {
@@ -389,17 +375,11 @@ final class TransferCenter: ObservableObject {
         }
         let output = try prepareOutput(id, offset: offset)
         defer { try? output.close() }
-        var written = offset
-        progress(id, generation: generation, bytes: written, expected: length)
-        while written < length {
-            try Task.checkCancellation()
-            let count = Int(min(64 * 1024, length - written))
-            let data = try await handle.read(offset: written, count: count)
-            try output.write(contentsOf: data)
-            written += Int64(data.count)
-            progress(id, generation: generation, bytes: written, expected: length)
-        }
-        return written
+        return try await RemoteTransferPolicy.copy(
+            length: length, offset: offset, chunkSize: 64 * 1024, output: output,
+            fetch: { try await handle.read(offset: $0, count: $1) },
+            progress: { self.progress(id, generation: generation, bytes: $0, expected: length) }
+        )
     }
 
     private func downloadSMB(
@@ -418,17 +398,11 @@ final class TransferCenter: ObservableObject {
         }
         let output = try prepareOutput(id, offset: offset)
         defer { try? output.close() }
-        var written = offset
-        progress(id, generation: generation, bytes: written, expected: length)
-        while written < length {
-            try Task.checkCancellation()
-            let count = Int(min(128 * 1024, length - written))
-            let data = try await client.read(remote, offset: written, count: count)
-            try output.write(contentsOf: data)
-            written += Int64(data.count)
-            progress(id, generation: generation, bytes: written, expected: length)
-        }
-        return written
+        return try await RemoteTransferPolicy.copy(
+            length: length, offset: offset, chunkSize: 128 * 1024, output: output,
+            fetch: { try await client.read(remote, offset: $0, count: $1) },
+            progress: { self.progress(id, generation: generation, bytes: $0, expected: length) }
+        )
     }
 
     private func downloadHTTP(
