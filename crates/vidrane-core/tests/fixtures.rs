@@ -2,10 +2,9 @@ use vidrane_core::{http_range, subtitles, webdav};
 
 #[test]
 fn dav_fixture_preserves_successful_properties() {
-    let entries = webdav::parse_multistatus(include_str!(
-        "../../../tests/fixtures/dav_multistatus.xml"
-    ))
-    .unwrap();
+    let entries =
+        webdav::parse_multistatus(include_str!("../../../tests/fixtures/dav_multistatus.xml"))
+            .unwrap();
     assert_eq!(entries.len(), 2);
     assert!(entries[0].is_directory);
     assert_eq!(entries[1].display_name, "Episode & test");
